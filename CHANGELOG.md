@@ -1,5 +1,10 @@
 # What's new
 
+## v1.3.0 — 14 October 2026
+
+- New: **Verify the certificate can be turned off.** For a scanner with a self-signed certificate on a network you trust, the connection is still encrypted.
+- Changed: **TLS failures say why.** Test connection, uploads and Save explain what is wrong with the scanner's certificate or connection and what to change.
+
 ## v1.2.0 — 14 October 2026
 
 - New: **Scan over ICAPS.** Settings has a TLS option for ICAP servers that only accept encrypted connections. The server's certificate is checked, and the test explains when it is not trusted.

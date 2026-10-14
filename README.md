@@ -429,6 +429,7 @@ threat name.
 | Service | The ICAP service name, the last part of `icap://host:1344/service`. |
 | Timeout | Seconds to wait for the scanner before giving up. |
 | Use TLS (ICAPS) | Connect over TLS. The port switches to 11344, the usual ICAPS port, unless you set another. |
+| Verify the certificate | On (the default): the scanner's certificate must be valid and match Server. Off: the link is still encrypted, but any certificate is accepted. |
 | Reject the upload if the scanner cannot be reached or cannot scan | On (the default): such an upload is refused. Off: it is kept, and the page says it was not scanned. |
 
 **Test connection** asks the server what it is and then scans a few harmless
@@ -436,9 +437,16 @@ bytes, so it also catches a server that answers but cannot scan, such as one
 with no licence. It uses the values in the form, so a server can be checked
 before saving.
 
-With TLS on, the server's certificate is always checked. If it is self-signed
-or issued by a private CA, start Pigeonhole with `NODE_EXTRA_CA_CERTS` set to
-that CA's PEM file, and use the name the certificate was issued for as Server.
+If the certificate is self-signed or issued by a private CA, either start
+Pigeonhole with `NODE_EXTRA_CA_CERTS` set to that CA's PEM file, or turn off
+**Verify the certificate**. Use the name the certificate was issued for as
+Server.
+
+When a TLS connection fails, Test connection, the upload card and the message
+after Save all say why in plain words: an expired or self-signed certificate, a
+certificate for another name, a CA this server does not trust, no TLS version in
+common, a scanner that wants a client certificate, or a port that does not
+speak TLS (or the other way round).
 
 Only uploads are scanned. Files already in the folder, or put there by other
 means, are not.

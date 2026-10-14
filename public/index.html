@@ -208,6 +208,8 @@ dialog.wide{max-width:min(500px,calc(100vw - 32px))}
 .set-opt{display:flex;align-items:flex-start;gap:10px;margin-top:16px;cursor:pointer;
   font-family:var(--mono);font-size:.8rem;color:var(--steel-dim)}
 .set-opt input{margin-top:3px!important}
+.set-sub{margin:8px 0 0 26px}
+.set-sub:has(input:disabled){opacity:.5;cursor:default}
 .set-test{display:flex;align-items:center;gap:14px;margin-top:18px}
 .set-test button{font-family:var(--mono);font-size:.78rem;letter-spacing:.03em;padding:8px 14px;
   cursor:pointer;border:1px solid var(--rule-hi);background:var(--chassis);color:var(--ink);
@@ -312,6 +314,8 @@ footer a{color:var(--steel-dim)}
         </div>
         <label class="set-opt"><input type="checkbox" id="s-tls">
           <span>Use TLS (ICAPS)</span></label>
+        <label class="set-opt set-sub"><input type="checkbox" id="s-verify">
+          <span>Verify the certificate. Untick only for a scanner you trust on a closed network</span></label>
         <label class="set-opt"><input type="checkbox" id="s-closed">
           <span>Reject the upload if the scanner cannot be reached or cannot scan</span></label>
         <div class="set-test">
@@ -715,7 +719,8 @@ let scanOn = false;
 
 function drawScanState(c) {
   scanOn = !!(c && c.enabled);
-  $('scanstate').textContent = scanOn ? `scanning uploads via ${c.tls ? 'icaps' : 'icap'}://${c.host}:${c.port}` : '';
+  $('scanstate').textContent = scanOn ? `scanning uploads via ${c.tls ? 'icaps' : 'icap'}://${c.host}:${c.port}` +
+    (c.tls && !c.tlsVerify ? ' (certificate not verified)' : '') : '';
 }
 
 const settingsDlg = $('settings');
@@ -727,10 +732,12 @@ const formIcap = () => ({
   timeout: sv('s-timeout') === '' ? 120 : Number(sv('s-timeout')),
   failClosed: $('s-closed').checked,
   tls: $('s-tls').checked,
+  tlsVerify: $('s-verify').checked,
 });
 
 // Follow the conventional port when TLS is toggled, unless one was chosen.
 $('s-tls').onchange = () => {
+  $('s-verify').disabled = !$('s-tls').checked;
   const p = $('s-port'), to = $('s-tls').checked ? '11344' : '1344';
   if (p.value === '' || p.value === (to === '1344' ? '11344' : '1344')) p.value = to;
 };
@@ -755,6 +762,8 @@ $('btn-settings').onclick = async () => {
   $('s-timeout').value = c.timeout;
   $('s-closed').checked = c.failClosed;
   $('s-tls').checked = c.tls;
+  $('s-verify').checked = c.tlsVerify;
+  $('s-verify').disabled = !c.tls;
   settingsDlg.showModal();
   $('s-host').focus();
 };
@@ -786,8 +795,15 @@ $('settings-form').onsubmit = async (e) => {
     drawScanState(j.icap);
     settingsDlg.close();
     say(j.icap.enabled ? 'Uploads will be scanned' : 'Settings saved. Scanning is off');
-  } catch (err) { $('s-err').textContent = err.message; }
+  } catch (err) { $('s-err').textContent = err.message; save.disabled = false; return; }
   save.disabled = false;
+  // Saved either way, but a scanner that cannot be reached should be known
+  // now, not at the next upload.
+  if (!scanOn) return;
+  try {
+    const t = await post('settings/icap-test', formIcap());
+    if (!t.ok) say('Saved, but the scanner is not working: ' + t.error, true);
+  } catch {}
 };
 
 fetch(api('api/settings')).then(r => r.json()).then(j => drawScanState(j.icap)).catch(() => {});
