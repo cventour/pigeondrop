@@ -310,6 +310,8 @@ footer a{color:var(--steel-dim)}
           <div><label for="s-timeout">Timeout (s)</label>
             <input id="s-timeout" inputmode="numeric" autocomplete="off" placeholder="120"></div>
         </div>
+        <label class="set-opt"><input type="checkbox" id="s-tls">
+          <span>Use TLS (ICAPS)</span></label>
         <label class="set-opt"><input type="checkbox" id="s-closed">
           <span>Reject the upload if the scanner cannot be reached or cannot scan</span></label>
         <div class="set-test">
@@ -713,18 +715,25 @@ let scanOn = false;
 
 function drawScanState(c) {
   scanOn = !!(c && c.enabled);
-  $('scanstate').textContent = scanOn ? `scanning uploads via icap://${c.host}:${c.port}` : '';
+  $('scanstate').textContent = scanOn ? `scanning uploads via ${c.tls ? 'icaps' : 'icap'}://${c.host}:${c.port}` : '';
 }
 
 const settingsDlg = $('settings');
 const sv = (id) => $(id).value.trim();
 const formIcap = () => ({
   enabled: $('s-enabled').checked, host: sv('s-host'),
-  port: sv('s-port') === '' ? 1344 : Number(sv('s-port')),
+  port: sv('s-port') === '' ? ($('s-tls').checked ? 11344 : 1344) : Number(sv('s-port')),
   service: sv('s-service') || 'omsscan',
   timeout: sv('s-timeout') === '' ? 120 : Number(sv('s-timeout')),
   failClosed: $('s-closed').checked,
+  tls: $('s-tls').checked,
 });
+
+// Follow the conventional port when TLS is toggled, unless one was chosen.
+$('s-tls').onchange = () => {
+  const p = $('s-port'), to = $('s-tls').checked ? '11344' : '1344';
+  if (p.value === '' || p.value === (to === '1344' ? '11344' : '1344')) p.value = to;
+};
 
 function showResult(text, cls) {
   const r = $('s-result'); r.textContent = text || ''; r.className = 'set-result' + (cls ? ' ' + cls : '');
@@ -745,6 +754,7 @@ $('btn-settings').onclick = async () => {
   $('s-service').value = c.service;
   $('s-timeout').value = c.timeout;
   $('s-closed').checked = c.failClosed;
+  $('s-tls').checked = c.tls;
   settingsDlg.showModal();
   $('s-host').focus();
 };

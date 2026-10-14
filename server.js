@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import net from 'node:net';
+import tls from 'node:tls';
 import zlib from 'node:zlib';
 import { once } from 'node:events';
 import { Readable } from 'node:stream';
@@ -93,6 +94,7 @@ const ICAP_DEFAULTS = {
   enabled: false, host: '', port: 1344, service: 'omsscan',
   timeout: 120,          // seconds without hearing from the ICAP server
   failClosed: true,      // refuse the upload when it cannot be scanned
+  tls: false,            // ICAPS: the same protocol inside TLS
 };
 
 function cleanIcap(raw) {
@@ -123,6 +125,7 @@ function cleanIcap(raw) {
     out.timeout = t;
   }
   if ('failClosed' in r) out.failClosed = r.failClosed === true;
+  if ('tls' in r) out.tls = r.tls === true;
   if ('enabled' in r) out.enabled = r.enabled === true;
   if (out.enabled && !out.host) bad('Enter the ICAP server before turning scanning on');
   return out;
@@ -164,6 +167,26 @@ async function saveSettings(next) {
 // These are not verdicts: whether they stop an upload is the failClosed choice.
 const SCANNER_FAULT = /licen[sc]e|unavailable|not available|not ready|failed to scan|scan fail|timed? ?out|no engine|error/i;
 
+// The certificate is always checked. A scanner with a private or self-signed
+// certificate is trusted by pointing NODE_EXTRA_CA_CERTS at its CA file.
+const icapConnect = (cfg) => cfg.tls
+  ? tls.connect({ host: cfg.host, port: cfg.port })
+  : net.connect({ host: cfg.host, port: cfg.port });
+const icapReady = (cfg) => cfg.tls ? 'secureConnect' : 'connect';
+
+function icapError(e, cfg) {
+  if (e.code === 'ECONNREFUSED') return `${cfg.host}:${cfg.port} refused the connection`;
+  if (e.code === 'ENOTFOUND') return `cannot resolve ${cfg.host}`;
+  if (/CERT|SIGNATURE|ALTNAME/.test(e.code || '')) {
+    return `the certificate of ${cfg.host} is not trusted (${e.code}). ` +
+      'Set NODE_EXTRA_CA_CERTS to its CA file, or check the server name';
+  }
+  if (cfg.tls && /^ERR_SSL|EPROTO|ECONNRESET/.test(e.code || '')) {
+    return `TLS failed with ${cfg.host}:${cfg.port} (${e.message}). Is this port ICAPS?`;
+  }
+  return e.message;
+}
+
 function readIcapHead(text) {
   const [status, ...lines] = text.split('\r\n');
   const code = Number(status.split(' ')[1]);
@@ -194,7 +217,7 @@ function judge({ code, status, h }) {
 // source: { size, stream() }. Resolves, never rejects: every failure is an
 // 'error' verdict with something a person can act on.
 async function icapScan(source, name, cfg) {
-  const sock = net.connect({ host: cfg.host, port: cfg.port });
+  const sock = icapConnect(cfg);
   sock.setTimeout(cfg.timeout * 1000);
   const ac = new AbortController();
   let finish;
@@ -209,13 +232,12 @@ async function icapScan(source, name, cfg) {
     else if (head.length > 64 * 1024) fault('unreadable ICAP reply');
   });
   sock.on('timeout', () => fault(`no answer from ${cfg.host}:${cfg.port} in ${cfg.timeout}s`));
-  sock.on('error', (e) => fault(e.code === 'ECONNREFUSED' ? `${cfg.host}:${cfg.port} refused the connection`
-    : e.code === 'ENOTFOUND' ? `cannot resolve ${cfg.host}` : e.message));
+  sock.on('error', (e) => fault(icapError(e, cfg)));
   sock.on('close', () => fault('the ICAP server closed the connection'));
 
   (async () => {
     try {
-      await once(sock, 'connect', { signal: ac.signal });
+      await once(sock, icapReady(cfg), { signal: ac.signal });
       const put = async (b) => { if (!sock.write(b)) await once(sock, 'drain', { signal: ac.signal }); };
 
       const http = `PUT /${encodeURIComponent(name)} HTTP/1.1\r\nHost: pigeonhole\r\n` +
@@ -253,13 +275,14 @@ const scanFile = async (full, name, cfg) =>
 async function icapTest(cfg) {
   const t0 = Date.now();
   const options = await new Promise((resolve) => {
-    const sock = net.connect({ host: cfg.host, port: cfg.port });
+    const sock = icapConnect(cfg);
     let buf = '';
     const end = (r) => { sock.destroy(); resolve(r); };
-    sock.setTimeout(8000, () => end({ error: `no answer from ${cfg.host}:${cfg.port}` }));
-    sock.on('error', (e) => end({ error: e.code === 'ECONNREFUSED' ? `${cfg.host}:${cfg.port} refused the connection`
-      : e.code === 'ENOTFOUND' ? `cannot resolve ${cfg.host}` : e.message }));
-    sock.on('connect', () => sock.write(`OPTIONS icap://${cfg.host}:${cfg.port}/${cfg.service} ICAP/1.0\r\nHost: ${cfg.host}\r\n\r\n`));
+    // A plain ICAP port given TLS says nothing back: it waits for a request.
+    sock.setTimeout(8000, () => end({ error: `no answer from ${cfg.host}:${cfg.port}` +
+      (cfg.tls ? '. Is this port ICAPS, not plain ICAP?' : '') }));
+    sock.on('error', (e) => end({ error: icapError(e, cfg) }));
+    sock.on(icapReady(cfg), () => sock.write(`OPTIONS icap://${cfg.host}:${cfg.port}/${cfg.service} ICAP/1.0\r\nHost: ${cfg.host}\r\n\r\n`));
     sock.on('data', (c) => {
       buf += c.toString('latin1');
       if (buf.includes('\r\n\r\n')) {

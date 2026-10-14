@@ -428,12 +428,17 @@ threat name.
 | Server, Port | Where the ICAP server listens. 1344 is the standard port. |
 | Service | The ICAP service name, the last part of `icap://host:1344/service`. |
 | Timeout | Seconds to wait for the scanner before giving up. |
+| Use TLS (ICAPS) | Connect over TLS. The port switches to 11344, the usual ICAPS port, unless you set another. |
 | Reject the upload if the scanner cannot be reached or cannot scan | On (the default): such an upload is refused. Off: it is kept, and the page says it was not scanned. |
 
 **Test connection** asks the server what it is and then scans a few harmless
 bytes, so it also catches a server that answers but cannot scan, such as one
 with no licence. It uses the values in the form, so a server can be checked
 before saving.
+
+With TLS on, the server's certificate is always checked. If it is self-signed
+or issued by a private CA, start Pigeonhole with `NODE_EXTRA_CA_CERTS` set to
+that CA's PEM file, and use the name the certificate was issued for as Server.
 
 Only uploads are scanned. Files already in the folder, or put there by other
 means, are not.
