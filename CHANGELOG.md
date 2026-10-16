@@ -1,5 +1,9 @@
 # What's new
 
+## v1.5.0 — 16 October 2026
+
+- New: **Run it with npx.** `npx pigeondrop` starts Pigeonhole in the folder you are in, with nothing to install. Its files and settings stay in that folder.
+
 ## v1.4.0 — 16 October 2026
 
 - New: **Pigeonhole has an icon.** It shows in the browser tab and beside the page heading.

@@ -31,8 +31,13 @@ const PUBLIC = path.join(import.meta.dirname, 'public');
 // browse, zip and hand out, and a scanner address has no business in it.
 // Under systemd, StateDirectory= names a place the service may write even with
 // ProtectSystem=strict, and the code directory is not one of them.
+// Run through npx or a global install, the code sits in npm's cache or a
+// root-owned folder, so settings go beside the files folder in the working
+// directory instead, where they survive an upgrade.
+const CODE_DIR = import.meta.dirname.split(path.sep).includes('node_modules')
+  ? process.cwd() : import.meta.dirname;
 const SETTINGS_FILE = path.resolve(process.env.SETTINGS_FILE
-  || path.join(process.env.STATE_DIRECTORY?.split(':')[0] || import.meta.dirname, 'settings.json'));
+  || path.join(process.env.STATE_DIRECTORY?.split(':')[0] || CODE_DIR, 'settings.json'));
 
 // Branding is configuration, not code: one binary, any deployment.
 const TITLE = process.env.REPO_TITLE || 'Pigeonhole';

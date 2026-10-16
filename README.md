@@ -12,8 +12,9 @@ without email, chat attachments or a cloud account.
 Drag files in or browse for them, with a progress bar on each. Browse folders,
 rename, delete, download, make folders. Tick several items to download them
 together; a folder, or any selection of more than one file, arrives as a
-single zip, streamed as it is built. That is the whole feature list and it is
-meant to stay short.
+single zip, streamed as it is built. Optionally, every upload is checked by
+an ICAP virus scanner before it appears. That is the whole feature list and it
+is meant to stay short.
 
 **No dependencies.** Node's standard library and nothing else. No install
 step, no lockfile, nothing to update when someone else's package goes wrong.
@@ -26,8 +27,30 @@ Node 20 or newer, on any platform it runs on. That is the entire list.
 node --version
 ```
 
-Then follow whichever section below matches your machine. Each one is
-self-contained: install, run, share, keep running.
+## Quickest: npx
+
+```bash
+npx pigeondrop
+```
+
+Runs it from the folder you are in and serves `./files`, created if missing.
+Open http://localhost:3001. Changes made on the Settings page are kept in
+`./settings.json`. The variables under [Configuration](#configuration) work
+the same way:
+
+```bash
+REPO_ROOT=/srv/files PORT=8080 npx pigeondrop
+```
+
+On Windows, set them first, as in
+[Serve a folder you already have](#serve-a-folder-you-already-have-1), then
+run `npx pigeondrop`.
+
+To keep it installed rather than fetched each time, `npm install -g pigeondrop`
+and then run `pigeondrop`.
+
+For anything longer-lived, follow whichever section below matches your
+machine. Each one is self-contained: install, run, share, keep running.
 
 ---
 
@@ -83,7 +106,7 @@ Files land in `./files`, created on first run.
 
 ## Serve a folder you already have
 
-Settings are environment variables. Set them inline for one run:
+Configuration is environment variables. Set them inline for one run:
 
 ```bash
 REPO_ROOT=/srv/files node server.js
@@ -281,7 +304,7 @@ Files land in `.\files`, created on first run.
 
 ## Serve a folder you already have
 
-Settings are environment variables. PowerShell sets them on their own line —
+Configuration is environment variables. PowerShell sets them on their own line —
 the `REPO_ROOT=... node server.js` form you see in Unix instructions is not
 valid here:
 
@@ -400,12 +423,12 @@ All optional, all environment variables, identical on every platform.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `REPO_ROOT` | `./files` | The directory it manages. Created if missing. |
+| `REPO_ROOT` | `./files`, in the working directory | The directory it manages. Created if missing. |
 | `HOST` | `127.0.0.1` | Bind address. Loopback by default, on purpose. |
 | `PORT` | `3001` | |
 | `REPO_TITLE` | `Pigeonhole` | Page title and heading |
 | `REPO_SUBTITLE` | `Drop files in. Take files out.` | Line under the heading |
-| `SETTINGS_FILE` | `$STATE_DIRECTORY/settings.json` under systemd, else `settings.json` beside `server.js` | Where changes made on the Settings page are kept. Mode 600; not in the managed directory. It must be somewhere the service can write. |
+| `SETTINGS_FILE` | `$STATE_DIRECTORY/settings.json` under systemd, else `settings.json` beside `server.js` (in the working directory when run through npx or a global install) | Where changes made on the Settings page are kept. Mode 600; not in the managed directory. It must be somewhere the service can write. |
 
 Branding is configuration rather than code, so one copy serves any deployment.
 
