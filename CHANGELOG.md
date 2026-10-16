@@ -1,5 +1,9 @@
 # What's new
 
+## v1.4.0 — 16 October 2026
+
+- New: **Pigeonhole has an icon.** It shows in the browser tab and beside the page heading.
+
 ## v1.3.0 — 14 October 2026
 
 - New: **Verify the certificate can be turned off.** For a scanner with a self-signed certificate on a network you trust, the connection is still encrypted.

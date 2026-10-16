@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pigeonhole</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'> <rect x='2' y='2' width='60' height='60' rx='13' fill='%232d3339'/> <g fill='%230f1113'> <path d='M8 28V17a7 7 0 0 1 14 0v11z'/> <path d='M25 28V17a7 7 0 0 1 14 0v11z'/> <path d='M8 51V40a7 7 0 0 1 14 0v11z'/> <path d='M25 51V40a7 7 0 0 1 14 0v11z'/> <path d='M42 51V40a7 7 0 0 1 14 0v11z'/> </g> <path d='M42 28V17a7 7 0 0 1 14 0v11z' fill='%23ff6a1f'/> <path d='M44.5 19.5h9v6.5h-9z' fill='%231b1e21'/> <path d='M44.5 19.5l4.5 3.5 4.5-3.5' fill='none' stroke='%23ff6a1f' stroke-width='1.3'/> <path d='M6 30h52M6 53h52' stroke='%23c8ced4' stroke-width='2.5' stroke-linecap='round'/> </svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -46,6 +47,8 @@ body{margin:0;background:var(--panel);color:var(--ink);font-family:var(--sans);
 header{padding:clamp(28px,5vw,48px) 0 20px}
 h1{font-family:var(--narrow);font-weight:700;margin:0;text-transform:uppercase;
   font-size:clamp(1.6rem,4vw,2.5rem);line-height:1;letter-spacing:-.02em}
+.brand{display:flex;align-items:center;gap:14px}
+.brand svg{width:clamp(36px,6vw,48px);height:auto;flex:none}
 .sub{color:var(--steel-dim);margin:10px 0 0;font-size:.95rem}
 
 /* --- toolbar --- */
@@ -235,7 +238,10 @@ footer a{color:var(--steel-dim)}
 
 <div class="wrap">
   <header>
-    <h1 id="title">Pigeonhole</h1>
+    <div class="brand">
+      <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"> <rect x="2" y="2" width="60" height="60" rx="13" fill="#2d3339"/> <g fill="#0f1113"> <path d="M8 28V17a7 7 0 0 1 14 0v11z"/> <path d="M25 28V17a7 7 0 0 1 14 0v11z"/> <path d="M8 51V40a7 7 0 0 1 14 0v11z"/> <path d="M25 51V40a7 7 0 0 1 14 0v11z"/> <path d="M42 51V40a7 7 0 0 1 14 0v11z"/> </g> <path d="M42 28V17a7 7 0 0 1 14 0v11z" fill="#ff6a1f"/> <path d="M44.5 19.5h9v6.5h-9z" fill="#1b1e21"/> <path d="M44.5 19.5l4.5 3.5 4.5-3.5" fill="none" stroke="#ff6a1f" stroke-width="1.3"/> <path d="M6 30h52M6 53h52" stroke="#c8ced4" stroke-width="2.5" stroke-linecap="round"/> </svg>
+      <h1 id="title">Pigeonhole</h1>
+    </div>
     <p class="sub" id="subtitle">Drop files in. Take files out.</p>
   </header>
 

@@ -1,3 +1,5 @@
+<img src="icon.svg" width="88" alt="Pigeonhole icon: a wall of arched pigeonholes, one holding a letter">
+
 # Pigeonhole
 
 A file pigeonhole you can stand up in a minute. Put files in, let people take
