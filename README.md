@@ -61,7 +61,7 @@ Also WSL, and anything else with bash.
 ## Install it
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cventour/pigeonhole/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/cventour/pigeondrop/main/install.sh -o install.sh
 ```
 
 Read it — it is about a hundred lines and does nothing surprising. Then:
@@ -97,7 +97,7 @@ Run the script again later and it updates the copy it installed.
 The script saves typing, not much else. The manual version is three lines:
 
 ```bash
-git clone https://github.com/cventour/pigeonhole.git
+git clone https://github.com/cventour/pigeondrop.git
 cd pigeonhole
 node server.js
 ```
@@ -243,7 +243,7 @@ PowerShell 7.
 ## Install it
 
 ```powershell
-irm https://raw.githubusercontent.com/cventour/pigeonhole/main/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/cventour/pigeondrop/main/install.ps1 -OutFile install.ps1
 ```
 
 Read it — it is about a hundred lines and does nothing surprising. Then:
@@ -285,7 +285,7 @@ Run the script again later and it updates the copy it installed.
 The script saves typing, not much else. The manual version is three lines:
 
 ```powershell
-git clone https://github.com/cventour/pigeonhole.git
+git clone https://github.com/cventour/pigeondrop.git
 cd pigeonhole
 node server.js
 ```
@@ -294,9 +294,9 @@ Windows does not ship with git, so on a fresh machine that first line fails.
 Take the zip instead — this needs nothing that is not already there:
 
 ```powershell
-irm https://github.com/cventour/pigeonhole/archive/refs/heads/main.zip -OutFile pigeonhole.zip
-Expand-Archive pigeonhole.zip -DestinationPath .
-cd pigeonhole-main
+irm https://github.com/cventour/pigeondrop/archive/refs/heads/main.zip -OutFile pigeondrop.zip
+Expand-Archive pigeondrop.zip -DestinationPath .
+cd pigeondrop-main
 node server.js
 ```
 

@@ -1,5 +1,9 @@
 # What's new
 
+## v1.5.1 — 16 October 2026
+
+- Changed: **Pigeonhole's code now lives at github.com/cventour/pigeondrop.** Old links and install commands still work.
+
 ## v1.5.0 — 16 October 2026
 
 - New: **Run it with npx.** `npx pigeondrop` starts Pigeonhole in the folder you are in, with nothing to install. Its files and settings stay in that folder.

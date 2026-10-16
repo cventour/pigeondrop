@@ -32,8 +32,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$RepoUrl    = 'https://github.com/cventour/pigeonhole.git'
-$TarballUrl = 'https://github.com/cventour/pigeonhole/archive/refs/heads/main.zip'
+$RepoUrl    = 'https://github.com/cventour/pigeondrop.git'
+$TarballUrl = 'https://github.com/cventour/pigeondrop/archive/refs/heads/main.zip'
 $NodeMin    = 20
 
 function Step($text) { Write-Host "`n==> $text" }
@@ -84,7 +84,7 @@ else {
         $zip = Join-Path $tmp 'pigeonhole.zip'
         Invoke-WebRequest -Uri $TarballUrl -OutFile $zip -UseBasicParsing
         Expand-Archive -Path $zip -DestinationPath $tmp -Force
-        $src = Get-ChildItem -Directory $tmp | Where-Object Name -like 'pigeonhole-*' | Select-Object -First 1
+        $src = Get-ChildItem -Directory $tmp | Select-Object -First 1
         if (-not $src) { Die 'The download did not contain what it should.' }
         New-Item -ItemType Directory -Path $Dir -Force | Out-Null
         Copy-Item -Path (Join-Path $src.FullName '*') -Destination $Dir -Recurse -Force

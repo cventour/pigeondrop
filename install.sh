@@ -12,8 +12,8 @@
 #
 set -euo pipefail
 
-REPO_URL="https://github.com/cventour/pigeonhole.git"
-TARBALL_URL="https://github.com/cventour/pigeonhole/archive/refs/heads/main.tar.gz"
+REPO_URL="https://github.com/cventour/pigeondrop.git"
+TARBALL_URL="https://github.com/cventour/pigeondrop/archive/refs/heads/main.tar.gz"
 NODE_MIN=20
 
 DIR="${PIGEONHOLE_DIR:-$HOME/pigeonhole}"
@@ -78,7 +78,7 @@ else
   trap 'rm -rf "$tmp"' EXIT
   curl -fsSL "$TARBALL_URL" | tar -xz -C "$tmp"
   mkdir -p "$DIR"
-  cp -R "$tmp"/pigeonhole-*/. "$DIR"/
+  cp -R "$tmp"/*/. "$DIR"/
   say "Downloaded."
 fi
 
