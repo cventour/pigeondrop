@@ -1,5 +1,9 @@
 # What's new
 
+## v1.6.1 — 2 November 2026
+
+- Changed: **The page heading reads Pigeonhole.** It is no longer shown in capitals.
+
 ## v1.6.0 — 2 November 2026
 
 - New: **Filter the file list by name.** Type in the box above the list to show only the files and folders whose names contain what you typed.
