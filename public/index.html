@@ -103,6 +103,10 @@ button.act.primary:hover{background:var(--signal);color:#0d0f11;border-color:var
 .q-retry:hover{background:var(--signal);color:#0d0f11;border-color:var(--signal)}
 
 /* --- listing --- */
+.search{display:block;width:100%;padding:10px 12px;margin:0 0 -1px;
+  font-family:var(--mono);font-size:.85rem;color:var(--ink);
+  background:var(--panel);border:1px solid var(--rule)}
+.search:focus{outline:none;border-color:var(--signal)}
 .tablewrap{border:1px solid var(--rule);background:var(--panel-lo);overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:520px}
 th{text-align:left;font-family:var(--mono);font-weight:500;font-size:.75rem;
@@ -262,6 +266,7 @@ footer a{color:var(--steel-dim)}
   <div class="queue" id="queue"></div>
   <p class="msg" id="msg" role="status"></p>
 
+  <input type="search" class="search" id="search" placeholder="Filter by name" aria-label="Filter files by name" autocomplete="off" spellcheck="false">
   <div class="tablewrap">
     <table>
       <thead><tr>
@@ -462,7 +467,7 @@ function drawCrumbs() {
   $('drop-target').textContent = cwd;
 }
 
-async function go(dir) { cwd = dir || '/'; selected.clear(); await refresh(); }
+async function go(dir) { cwd = dir || '/'; selected.clear(); $('search').value = ''; await refresh(); }
 
 // --- selection and download ------------------------------------------------
 // Paths of the ticked rows in this folder. A single file downloads as itself;
@@ -595,6 +600,8 @@ for (const th of document.querySelectorAll('th[data-k]')) {
   };
 }
 
+$('search').oninput = () => render();
+
 async function refresh() {
   drawCrumbs();
   let data;
@@ -630,7 +637,15 @@ function render() {
     return;
   }
 
-  for (const it of sorted(items)) {
+  const q = $('search').value.trim().toLowerCase();
+  const list = q ? items.filter(it => it.name.toLowerCase().includes(q)) : items;
+  if (q && !list.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="5" class="empty">No names match.</td>';
+    rows.append(tr);
+  }
+
+  for (const it of sorted(list)) {
     const full = (cwd === '/' ? '' : cwd) + '/' + it.name;
     const tr = document.createElement('tr');
     tr.innerHTML = `

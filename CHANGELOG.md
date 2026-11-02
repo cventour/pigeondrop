@@ -1,5 +1,9 @@
 # What's new
 
+## v1.6.0 — 2 November 2026
+
+- New: **Filter the file list by name.** Type in the box above the list to show only the files and folders whose names contain what you typed.
+
 ## v1.5.1 — 16 October 2026
 
 - Changed: **Pigeonhole's code now lives at github.com/cventour/pigeondrop.** Old links and install commands still work.
