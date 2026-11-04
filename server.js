@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Pigeonhole — a small self-hosted file manager.
+// Pigeondrop — a small self-hosted file manager.
 //
 // Node standard library only. Uploads arrive as a raw PUT body rather than
 // multipart/form-data, which removes the only reason this would need a
@@ -40,7 +40,7 @@ const SETTINGS_FILE = path.resolve(process.env.SETTINGS_FILE
   || path.join(process.env.STATE_DIRECTORY?.split(':')[0] || CODE_DIR, 'settings.json'));
 
 // Branding is configuration, not code: one binary, any deployment.
-const TITLE = process.env.REPO_TITLE || 'Pigeonhole';
+const TITLE = process.env.REPO_TITLE || 'Pigeondrop';
 const SUBTITLE = process.env.REPO_SUBTITLE || 'Drop files in. Take files out.';
 
 // --- path safety -----------------------------------------------------------
@@ -284,7 +284,7 @@ async function icapScan(source, name, cfg) {
       await once(sock, icapReady(cfg), { signal: ac.signal });
       const put = async (b) => { if (!sock.write(b)) await once(sock, 'drain', { signal: ac.signal }); };
 
-      const http = `PUT /${encodeURIComponent(name)} HTTP/1.1\r\nHost: pigeonhole\r\n` +
+      const http = `PUT /${encodeURIComponent(name)} HTTP/1.1\r\nHost: pigeondrop\r\n` +
         `Content-Disposition: attachment; filename="${name.replace(/[^\x20-\x7E]|["\\]/g, '_')}"\r\n` +
         `Content-Type: application/octet-stream\r\nContent-Length: ${source.size}\r\n\r\n`;
       await put(`REQMOD icap://${cfg.host}:${cfg.port}/${cfg.service} ICAP/1.0\r\n` +
@@ -337,9 +337,9 @@ async function icapTest(cfg) {
   });
   if (options.error) return { ok: false, error: options.error };
 
-  const sample = Buffer.from('pigeonhole connection test\n');
+  const sample = Buffer.from('pigeondrop connection test\n');
   const scan = await icapScan({ size: sample.length, stream: () => Readable.from([sample]) },
-                              'pigeonhole-test.txt', { ...cfg, timeout: 20 });
+                              'pigeondrop-test.txt', { ...cfg, timeout: 20 });
   const ms = Date.now() - t0;
   if (scan.verdict === 'clean') return { ok: true, server: options.server, methods: options.methods, ms };
   return {

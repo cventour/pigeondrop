@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Pigeonhole installer for Windows PowerShell.
+    Pigeondrop installer for Windows PowerShell.
 
 .DESCRIPTION
     There is nothing to build and nothing to install system-wide. This fetches
@@ -8,10 +8,10 @@
 
 .EXAMPLE
     .\install.ps1
-    Install to $HOME\pigeonhole and run it.
+    Install to $HOME\pigeondrop and run it.
 
 .EXAMPLE
-    .\install.ps1 -Dir C:\pigeonhole -Root D:\files -Bind 0.0.0.0
+    .\install.ps1 -Dir C:\pigeondrop -Root D:\files -Bind 0.0.0.0
     Install to a chosen folder, serve D:\files, and accept connections from
     other machines on the network.
 
@@ -22,7 +22,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Dir   = (Join-Path $HOME 'pigeonhole'),
+    [string]$Dir   = (Join-Path $HOME 'pigeondrop'),
     [string]$Root,
     [int]   $Port,
     [string]$Bind,
@@ -31,6 +31,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Installs made before the rename to Pigeondrop live in $HOME\pigeonhole; keep updating that one.
+$OldDir = Join-Path $HOME 'pigeonhole'
+if (-not $PSBoundParameters.ContainsKey('Dir') -and -not (Test-Path $Dir) -and (Test-Path (Join-Path $OldDir 'server.js'))) {
+    $Dir = $OldDir
+}
 
 $RepoUrl    = 'https://github.com/cventour/pigeondrop.git'
 $TarballUrl = 'https://github.com/cventour/pigeondrop/archive/refs/heads/main.zip'
@@ -52,13 +58,13 @@ if (-not (Have 'node')) {
 $version = (& node --version)                       # v20.11.0
 $major   = [int]($version.TrimStart('v').Split('.')[0])
 if ($major -lt $NodeMin) {
-    Die "Node $version is too old. Pigeonhole needs $NodeMin or newer."
+    Die "Node $version is too old. Pigeondrop needs $NodeMin or newer."
 }
 Say "Node $version"
 
 # ----------------------------------------------------------------- get code
 
-Step "Fetching Pigeonhole into $Dir"
+Step "Fetching Pigeondrop into $Dir"
 
 if (Test-Path (Join-Path $Dir 'server.js')) {
     if ((Test-Path (Join-Path $Dir '.git')) -and (Have 'git')) {
@@ -81,7 +87,7 @@ else {
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
     try {
-        $zip = Join-Path $tmp 'pigeonhole.zip'
+        $zip = Join-Path $tmp 'pigeondrop.zip'
         Invoke-WebRequest -Uri $TarballUrl -OutFile $zip -UseBasicParsing
         Expand-Archive -Path $zip -DestinationPath $tmp -Force
         $src = Get-ChildItem -Directory $tmp | Select-Object -First 1

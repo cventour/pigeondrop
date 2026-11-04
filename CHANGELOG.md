@@ -1,5 +1,10 @@
 # What's new
 
+## v1.7.0 — 4 November 2026
+
+- Changed: **Pigeonhole is now called Pigeondrop.** The page, the installers and the instructions use the new name. Existing installs keep working, and the installers keep updating them where they are.
+- Changed: **The `pigeonhole` command is gone.** Run `pigeondrop` instead.
+
 ## v1.6.1 — 2 November 2026
 
 - Changed: **The page heading reads Pigeonhole.** It is no longer shown in capitals.

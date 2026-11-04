@@ -1,8 +1,8 @@
-<img src="icon.svg" width="88" alt="Pigeonhole icon: a wall of arched pigeonholes, one holding a letter">
+<img src="icon.svg" width="88" alt="Pigeondrop icon: a wall of arched pigeonholes, one holding a letter">
 
-# Pigeonhole
+# Pigeondrop
 
-A file pigeonhole you can stand up in a minute. Put files in, let people take
+A file drop you can stand up in a minute. Put files in, let people take
 them out, and take back whatever they leave you.
 
 Useful when a group needs a shared drop: distributing builds, installers or
@@ -70,14 +70,14 @@ Read it — it is about a hundred lines and does nothing surprising. Then:
 bash install.sh
 ```
 
-It installs to `~/pigeonhole`, checks your Node version, and starts the
+It installs to `~/pigeondrop`, checks your Node version, and starts the
 server. Open http://localhost:3001.
 
 Options:
 
 | Option | Meaning |
 |---|---|
-| `--dir` | Where to install. Default `~/pigeonhole`. |
+| `--dir` | Where to install. Default `~/pigeondrop`. |
 | `--root` | The directory to serve. Default `<install dir>/files`. |
 | `--port` | Default `3001`. |
 | `--host` | Bind address. Default `127.0.0.1`. |
@@ -98,7 +98,7 @@ The script saves typing, not much else. The manual version is three lines:
 
 ```bash
 git clone https://github.com/cventour/pigeondrop.git
-cd pigeonhole
+cd pigeondrop
 node server.js
 ```
 
@@ -150,25 +150,25 @@ Others open `http://<that-address>:3001`. Read
 The shell that started it owns it. To survive a closed terminal:
 
 ```bash
-nohup env REPO_ROOT=/srv/files node server.js > pigeonhole.log 2>&1 &
+nohup env REPO_ROOT=/srv/files node server.js > pigeondrop.log 2>&1 &
 ```
 
-**Linux, with systemd.** Save as `/etc/systemd/system/pigeonhole.service`:
+**Linux, with systemd.** Save as `/etc/systemd/system/pigeondrop.service`:
 
 ```ini
 [Unit]
-Description=Pigeonhole
+Description=Pigeondrop
 After=network.target
 
 [Service]
 Type=simple
-User=pigeonhole
-WorkingDirectory=/opt/pigeonhole
-ExecStart=/usr/bin/node /opt/pigeonhole/server.js
+User=pigeondrop
+WorkingDirectory=/opt/pigeondrop
+ExecStart=/usr/bin/node /opt/pigeondrop/server.js
 Environment=REPO_ROOT=/srv/files
 # A place the service may write its settings, which ProtectSystem=strict
-# would otherwise refuse. Pigeonhole finds it by itself: /var/lib/pigeonhole.
-StateDirectory=pigeonhole
+# would otherwise refuse. Pigeondrop finds it by itself: /var/lib/pigeondrop.
+StateDirectory=pigeondrop
 # Quote any value containing a space: systemd splits unquoted ones.
 Environment="REPO_TITLE=Team Drop"
 Restart=on-failure
@@ -183,15 +183,15 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable --now pigeonhole
+sudo systemctl enable --now pigeondrop
 ```
 
 ```bash
-systemctl status pigeonhole
+systemctl status pigeondrop
 ```
 
 **macOS, with launchd.** Save as
-`~/Library/LaunchAgents/com.pigeonhole.plist`, with your own paths — launchd
+`~/Library/LaunchAgents/com.pigeondrop.plist`, with your own paths — launchd
 does not expand `~`, and needs the full path to node:
 
 ```xml
@@ -199,11 +199,11 @@ does not expand `~`, and needs the full path to node:
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key>              <string>com.pigeonhole</string>
+  <key>Label</key>              <string>com.pigeondrop</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/node</string>
-    <string>/Users/you/pigeonhole/server.js</string>
+    <string>/Users/you/pigeondrop/server.js</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -212,7 +212,7 @@ does not expand `~`, and needs the full path to node:
   </dict>
   <key>RunAtLoad</key>          <true/>
   <key>KeepAlive</key>          <true/>
-  <key>StandardErrorPath</key>  <string>/tmp/pigeonhole.log</string>
+  <key>StandardErrorPath</key>  <string>/tmp/pigeondrop.log</string>
 </dict>
 </plist>
 ```
@@ -220,17 +220,17 @@ does not expand `~`, and needs the full path to node:
 `which node` gives the path to use. Then load it:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pigeonhole.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pigeondrop.plist
 ```
 
 ```bash
-launchctl print gui/$(id -u)/com.pigeonhole
+launchctl print gui/$(id -u)/com.pigeondrop
 ```
 
 To stop it for good:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.pigeonhole
+launchctl bootout gui/$(id -u)/com.pigeondrop
 ```
 
 ---
@@ -255,14 +255,14 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 Windows blocks downloaded scripts by default, which is why that is longer than
 `.\install.ps1`. It applies to this one run and changes nothing on the machine.
 
-It installs to `$HOME\pigeonhole`, checks your Node version, and starts the
+It installs to `$HOME\pigeondrop`, checks your Node version, and starts the
 server. Open http://localhost:3001.
 
 Options:
 
 | Option | Meaning |
 |---|---|
-| `-Dir` | Where to install. Default `$HOME\pigeonhole`. |
+| `-Dir` | Where to install. Default `$HOME\pigeondrop`. |
 | `-Root` | The directory to serve. Default `<install dir>\files`. |
 | `-Port` | Default `3001`. |
 | `-Bind` | Bind address. Default `127.0.0.1`. |
@@ -286,7 +286,7 @@ The script saves typing, not much else. The manual version is three lines:
 
 ```powershell
 git clone https://github.com/cventour/pigeondrop.git
-cd pigeonhole
+cd pigeondrop
 node server.js
 ```
 
@@ -340,7 +340,7 @@ Windows Firewall will block the port even once it is bound, and the prompt is
 easy to miss. Allow it from an **administrator** PowerShell:
 
 ```powershell
-New-NetFirewallRule -DisplayName "Pigeonhole" -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Allow
+New-NetFirewallRule -DisplayName "Pigeondrop" -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Allow
 ```
 
 Others open `http://<that-address>:3001`. Read
@@ -349,7 +349,7 @@ Others open `http://<that-address>:3001`. Read
 To close it again afterwards:
 
 ```powershell
-Remove-NetFirewallRule -DisplayName "Pigeonhole"
+Remove-NetFirewallRule -DisplayName "Pigeondrop"
 ```
 
 ## Keep it running
@@ -358,7 +358,7 @@ The window that started it owns it. To put it in the background for this
 session:
 
 ```powershell
-$p = Start-Process node -ArgumentList "server.js" -WorkingDirectory "$HOME\pigeonhole" -WindowStyle Hidden -PassThru
+$p = Start-Process node -ArgumentList "server.js" -WorkingDirectory "$HOME\pigeondrop" -WindowStyle Hidden -PassThru
 ```
 
 `-PassThru` hands back the process, so you can stop it again:
@@ -372,7 +372,7 @@ PowerShell. Install it somewhere outside your profile first, since the task
 runs as SYSTEM:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Dir C:\pigeonhole -NoStart
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Dir C:\pigeondrop -NoStart
 ```
 
 Set every setting you need machine-wide, because SYSTEM does not see your
@@ -384,9 +384,9 @@ account's variables:
 ```
 
 ```powershell
-$action  = New-ScheduledTaskAction -Execute (Get-Command node).Source -Argument "server.js" -WorkingDirectory "C:\pigeonhole"
+$action  = New-ScheduledTaskAction -Execute (Get-Command node).Source -Argument "server.js" -WorkingDirectory "C:\pigeondrop"
 $trigger = New-ScheduledTaskTrigger -AtStartup
-Register-ScheduledTask -TaskName Pigeonhole -Action $action -Trigger $trigger -User SYSTEM -RunLevel Highest
+Register-ScheduledTask -TaskName Pigeondrop -Action $action -Trigger $trigger -User SYSTEM -RunLevel Highest
 ```
 
 `(Get-Command node).Source` resolves the full path to node.exe, because SYSTEM
@@ -395,11 +395,11 @@ does not necessarily share your `PATH`.
 Start it now rather than waiting for a reboot:
 
 ```powershell
-Start-ScheduledTask -TaskName Pigeonhole
+Start-ScheduledTask -TaskName Pigeondrop
 ```
 
 ```powershell
-Get-ScheduledTask -TaskName Pigeonhole | Get-ScheduledTaskInfo
+Get-ScheduledTask -TaskName Pigeondrop | Get-ScheduledTaskInfo
 ```
 
 A `LastTaskResult` of `267009` is not an error — it is `0x41301`, "the task is
@@ -408,11 +408,11 @@ currently running", which is what you want to see.
 Stop it, or remove it entirely:
 
 ```powershell
-Stop-ScheduledTask -TaskName Pigeonhole
+Stop-ScheduledTask -TaskName Pigeondrop
 ```
 
 ```powershell
-Unregister-ScheduledTask -TaskName Pigeonhole -Confirm:$false
+Unregister-ScheduledTask -TaskName Pigeondrop -Confirm:$false
 ```
 
 ---
@@ -426,7 +426,7 @@ All optional, all environment variables, identical on every platform.
 | `REPO_ROOT` | `./files`, in the working directory | The directory it manages. Created if missing. |
 | `HOST` | `127.0.0.1` | Bind address. Loopback by default, on purpose. |
 | `PORT` | `3001` | |
-| `REPO_TITLE` | `Pigeonhole` | Page title and heading |
+| `REPO_TITLE` | `Pigeondrop` | Page title and heading |
 | `REPO_SUBTITLE` | `Drop files in. Take files out.` | Line under the heading |
 | `SETTINGS_FILE` | `$STATE_DIRECTORY/settings.json` under systemd, else `settings.json` beside `server.js` (in the working directory when run through npx or a global install) | Where changes made on the Settings page are kept. Mode 600; not in the managed directory. It must be somewhere the service can write. |
 
@@ -442,7 +442,7 @@ How you set them is the only thing that differs:
 
 ## Scan uploads with ICAP
 
-**Settings** in the toolbar points Pigeonhole at an ICAP server (MetaDefender
+**Settings** in the toolbar points Pigeondrop at an ICAP server (MetaDefender
 ICAP Server, c-icap with ClamAV, anything that speaks ICAP `REQMOD`). Each
 upload is sent there once it has arrived, and appears in the listing only if
 the scanner passes it. A blocked file is deleted and the upload card shows the
@@ -463,7 +463,7 @@ with no licence. It uses the values in the form, so a server can be checked
 before saving.
 
 If the certificate is self-signed or issued by a private CA, either start
-Pigeonhole with `NODE_EXTRA_CA_CERTS` set to that CA's PEM file, or turn off
+Pigeondrop with `NODE_EXTRA_CA_CERTS` set to that CA's PEM file, or turn off
 **Verify the certificate**. Use the name the certificate was issued for as
 Server.
 
@@ -479,7 +479,7 @@ means, are not.
 ## There is no authentication
 
 Read that again before you expose it. Anyone who can reach it can upload,
-rename and delete. Pigeonhole assumes it sits on a network you trust — a home
+rename and delete. Pigeondrop assumes it sits on a network you trust — a home
 or office LAN, a VPN, a lab segment.
 
 That is a scope decision, not an oversight. Authentication done badly is worse

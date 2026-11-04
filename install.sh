@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Pigeonhole installer — macOS, Linux, WSL, anything with bash.
+# Pigeondrop installer — macOS, Linux, WSL, anything with bash.
 #
 # There is nothing to build and nothing to install system-wide. This fetches
 # the code, checks that Node is new enough, and starts the server.
 #
-#   ./install.sh                        install to ~/pigeonhole and run
-#   ./install.sh --dir /opt/pigeonhole  install somewhere else
+#   ./install.sh                        install to ~/pigeondrop and run
+#   ./install.sh --dir /opt/pigeondrop  install somewhere else
 #   ./install.sh --root /srv/files      serve an existing directory
 #   ./install.sh --no-start             install only
 #
@@ -16,7 +16,9 @@ REPO_URL="https://github.com/cventour/pigeondrop.git"
 TARBALL_URL="https://github.com/cventour/pigeondrop/archive/refs/heads/main.tar.gz"
 NODE_MIN=20
 
-DIR="${PIGEONHOLE_DIR:-$HOME/pigeonhole}"
+DIR="${PIGEONDROP_DIR:-${PIGEONHOLE_DIR:-$HOME/pigeondrop}}"
+# Installs made before the rename to Pigeondrop live in ~/pigeonhole; keep updating that one.
+[ -z "${PIGEONDROP_DIR:-}${PIGEONHOLE_DIR:-}" ] && [ ! -e "$DIR" ] && [ -e "$HOME/pigeonhole/server.js" ] && DIR="$HOME/pigeonhole"
 START=1
 
 say()  { printf '%s\n' "$*"; }
@@ -53,12 +55,12 @@ command -v node >/dev/null 2>&1 \
 
 major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
 [ "$major" -ge "$NODE_MIN" ] \
-  || die "Node $(node --version) is too old. Pigeonhole needs $NODE_MIN or newer."
+  || die "Node $(node --version) is too old. Pigeondrop needs $NODE_MIN or newer."
 say "Node $(node --version)"
 
 # ----------------------------------------------------------------- get code
 
-step "Fetching Pigeonhole into $DIR"
+step "Fetching Pigeondrop into $DIR"
 
 if [ -e "$DIR/server.js" ]; then
   if [ -d "$DIR/.git" ] && command -v git >/dev/null 2>&1; then
