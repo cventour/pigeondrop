@@ -7,6 +7,8 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
+import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { settingsDiff } from '../settings-diff.js';
 
@@ -41,9 +43,14 @@ async function start(env = {}) {
   const jpost = (p, body) => call(p, { method: 'POST', body: JSON.stringify(body) });
   const lines = () => fs.existsSync(logFile)
     ? fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  // Downloads are logged when the response closes, which can trail the client.
+  const waitFor = async (pred) => {
+    for (let i = 0; i < 100; i++) { const l = lines(); if (pred(l)) return l; await new Promise((r) => setTimeout(r, 50)); }
+    return lines();
+  };
   const put = (p, body, q = '') => call('/api/upload' + p + q, { method: 'PUT', body });
   const activity = async (qs = '') => (await call('/api/activity' + qs)).json();
-  return { dir, base, logFile, call, jpost, lines, put, activity, err: () => err, proc };
+  return { dir, base, port, logFile, call, jpost, lines, waitFor, put, activity, err: () => err, proc };
 }
 
 // A fake ICAP server. `reply` is the raw response head it sends after the request.
@@ -73,13 +80,13 @@ after(() => { for (const p of procs) p.kill(); for (const d of dirs) fs.rmSync(d
 test('upload, download, mkdir, rename, delete each log exactly one line', async () => {
   const s = await start();
   assert.equal((await s.put('/a.txt', 'hello')).status, 200);
-  assert.equal((await s.call('/api/download/a.txt')).status, 200);
+  await (await s.call('/api/download/a.txt')).arrayBuffer();
   await (await s.call('/api/download/a.txt')).arrayBuffer();
   assert.equal((await s.jpost('/api/mkdir', { dir: '/', name: 'docs' })).status, 200);
   assert.equal((await s.jpost('/api/rename', { target: '/a.txt', name: 'b.txt' })).status, 200);
   assert.equal((await s.jpost('/api/delete', { target: '/b.txt' })).status, 200);
 
-  const l = s.lines();
+  const l = await s.waitFor((x) => x.length >= 6);
   assert.deepEqual(l.map((e) => e.action), ['upload', 'download', 'download', 'mkdir', 'rename', 'delete']);
   for (const e of l) {
     assert.match(e.ts, /^\d{4}-\d\d-\d\dT.*Z$/);
@@ -87,7 +94,7 @@ test('upload, download, mkdir, rename, delete each log exactly one line', async 
     assert.match(e.ip, /^127\.0\.0\.1$|^::1$/);
   }
   assert.deepEqual([l[0].path, l[0].size, l[0].result], ['/a.txt', 5, 'off']);
-  assert.deepEqual([l[1].path, l[1].size], ['/a.txt', 5]);
+  assert.deepEqual([l[1].path, l[1].size, l[1].result], ['/a.txt', 5, 'completed']);
   assert.equal(l[3].path, '/docs');
   assert.deepEqual([l[4].path, l[4].to], ['/a.txt', '/b.txt']);
   assert.equal(l[5].path, '/b.txt');
@@ -103,10 +110,11 @@ test('download_zip logs the paths and total size', async () => {
   const r = await s.call('/api/zip', { method: 'POST', body: form });
   assert.equal(r.status, 200);
   await r.arrayBuffer();
-  const z = s.lines().filter((e) => e.action === 'download_zip');
+  const z = (await s.waitFor((x) => x.some((e) => e.action === 'download_zip'))).filter((e) => e.action === 'download_zip');
   assert.equal(z.length, 1);
   assert.deepEqual(z[0].paths, ['/d']);
   assert.equal(z[0].size, 6);
+  assert.equal(z[0].result, 'completed');
 });
 
 test('upload_blocked is logged with the scanner reason, and nothing lands', async () => {
@@ -275,4 +283,127 @@ test('csv neutralises formula injection', () => {
   }
   assert.equal(csv.csvCell('=HYPERLINK("x","y")'), '"\'=HYPERLINK(""x"",""y"")"');
   assert.equal(csv.csvCell('a=b'), 'a=b');
+});
+
+// --- downloads that do not finish ------------------------------------------
+// Read a little of the response, then hang up.
+const abortAfterFirstChunk = (s, method, url, body) => new Promise((res, rej) => {
+  const r = http.request({ host: '127.0.0.1', port: s.port, path: url, method,
+    headers: { 'user-agent': UA, ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) } }, (resp) => {
+    resp.once('data', () => { resp.destroy(); res(); });
+  });
+  r.on('error', rej); r.end(body);
+});
+
+test('an aborted download is logged once, as aborted, with the bytes sent', async () => {
+  const s = await start();
+  fs.mkdirSync(path.join(s.dir, 'files'), { recursive: true });
+  fs.writeFileSync(path.join(s.dir, 'files', 'big.bin'), Buffer.alloc(128 * 1024 * 1024));
+  await abortAfterFirstChunk(s, 'GET', '/api/download/big.bin');
+  const l = (await s.waitFor((x) => x.some((e) => e.action === 'download'))).filter((e) => e.action === 'download');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(s.lines().filter((e) => e.action === 'download').length, 1);
+  assert.equal(l[0].result, 'aborted');
+  assert.equal(l[0].size, 128 * 1024 * 1024);
+  assert.ok(l[0].sent > 0 && l[0].sent < l[0].size, `sent ${l[0].sent}`);
+});
+
+test('an aborted zip is logged once, as aborted, with the bytes sent', async () => {
+  const s = await start();
+  fs.mkdirSync(path.join(s.dir, 'files', 'd'), { recursive: true });
+  fs.writeFileSync(path.join(s.dir, 'files', 'd', 'r.bin'), crypto.randomBytes(48 * 1024 * 1024));
+  await abortAfterFirstChunk(s, 'POST', '/api/zip', 'path=%2Fd&dir=%2F');
+  const l = (await s.waitFor((x) => x.some((e) => e.action === 'download_zip'))).filter((e) => e.action === 'download_zip');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(s.lines().filter((e) => e.action === 'download_zip').length, 1);
+  assert.equal(l[0].result, 'aborted');
+  assert.deepEqual(l[0].paths, ['/d']);
+  assert.ok(l[0].sent > 0 && l[0].sent < 48 * 1024 * 1024, `sent ${l[0].sent}`);
+});
+
+// --- reading big logs ------------------------------------------------------
+const fakeLine = (i, ua = 'x') => JSON.stringify({ ts: new Date(1e12 + i * 1000).toISOString(), ip: '10.0.0.1',
+  ua, action: i % 5 === 0 ? 'delete' : 'mkdir', path: '/n' + i }) + '\n';
+
+for (const [label, env, count, ua] of [
+  ['a log bigger than one 64 KB chunk', {}, 1200, 'u'.repeat(50)],
+  ['lines that cross small chunk boundaries', { ACTIVITY_READ_CHUNK: '97' }, 150, 'v'.repeat(40)],
+]) {
+  test('pages through ' + label + ' without losing or repeating a line', async () => {
+    const s = await start(env);
+    let text = '';
+    for (let i = 0; i < count; i++) text += fakeLine(i, ua);
+    fs.writeFileSync(s.logFile, text);
+    if (!env.ACTIVITY_READ_CHUNK) assert.ok(text.length > 65536 * 2);
+    const seen = [];
+    let before = '';
+    do {
+      const j = await s.activity(`?limit=${env.ACTIVITY_READ_CHUNK ? 7 : 500}${before ? '&before=' + encodeURIComponent(before) : ''}`);
+      seen.push(...j.items.map((e) => e.path)); before = j.next;
+    } while (before);
+    assert.deepEqual(seen, Array.from({ length: count }, (_, i) => '/n' + (count - 1 - i)));
+    const del = await s.activity('?type=changes&limit=500');
+    assert.equal(del.items.length, Math.min(count, 500));
+  });
+}
+
+// --- refused requests ------------------------------------------------------
+test('refused state-changing requests are logged as rejected, once, without double-logging', async () => {
+  const s = await start();
+  await s.put('/a.txt', 'x');
+  assert.equal((await s.put('/a.txt', 'y')).status, 409);
+  assert.equal((await s.jpost('/api/delete', { target: '/' })).status, 400);
+  assert.equal((await s.jpost('/api/rename', { target: '/a.txt', name: 'a/b' })).status, 400);
+  await s.jpost('/api/mkdir', { dir: '/', name: 'taken' });
+  await s.put('/taken2', 'x');
+  assert.equal((await s.jpost('/api/rename', { target: '/taken2', name: 'taken' })).status, 409);
+  assert.equal((await s.call('/api/settings', { method: 'PUT', body: JSON.stringify({ icap: { port: 0 } }) })).status, 400);
+  assert.equal((await s.call('/api/download/nope.txt')).status, 404);
+  assert.equal((await s.call('/api/exists?path=/')).status, 400);
+
+  const rej = s.lines().filter((e) => e.result === 'rejected');
+  assert.deepEqual(rej.map((e) => [e.action, e.reason]), [
+    ['upload', 'exists'], ['delete', 'bad path'], ['rename', 'bad name'],
+    ['rename', 'name taken'], ['settings', 'Port must be a number from 1 to 65535'],
+  ]);
+  assert.equal(rej[0].path, '/a.txt');
+  assert.equal(s.lines().filter((e) => e.action === 'download').length, 0, 'rejected GETs are not logged');
+
+  // The scanner's own refusals are logged by their own actions, not as rejected too.
+  const { server, port } = await fakeIcap(BLOCK);
+  try {
+    await scanner(s, port);
+    await s.put('/bad.exe', 'X');
+    const u = s.lines().filter((e) => e.path === '/bad.exe');
+    assert.deepEqual(u.map((e) => e.action), ['upload_blocked']);
+  } finally { server.close(); }
+});
+
+test('an upload over an existing file is marked replaced', async () => {
+  const s = await start();
+  await s.put('/a.txt', 'one');
+  await s.put('/a.txt', 'two', '?mode=replace');
+  await s.put('/a.txt', 'three', '?mode=keep');
+  const u = s.lines().filter((e) => e.action === 'upload' && e.result !== 'rejected');
+  assert.deepEqual(u.map((e) => [e.path, e.replaced]), [['/a.txt', undefined], ['/a.txt', true], ['/a (2).txt', undefined]]);
+});
+
+// --- who the log says it was -----------------------------------------------
+test('TRUST_PROXY off ignores X-Forwarded-For entirely', async () => {
+  const s = await start();
+  await s.jpost('/api/mkdir', { dir: '/', name: 'a' }).then(() => {});
+  await s.call('/api/mkdir', { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9' },
+    body: JSON.stringify({ dir: '/', name: 'b' }) });
+  for (const e of s.lines()) { assert.match(e.ip, /^(127\.0\.0\.1|::1)$/); assert.equal('peer' in e, false); }
+});
+
+test('TRUST_PROXY on logs the left-most X-Forwarded-For address and the peer', async () => {
+  const s = await start({ TRUST_PROXY: 'on' });
+  await s.call('/api/mkdir', { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9, 10.1.1.1' },
+    body: JSON.stringify({ dir: '/', name: 'b' }) });
+  await s.jpost('/api/mkdir', { dir: '/', name: 'c' });
+  const l = s.lines();
+  assert.equal(l[0].ip, '203.0.113.9');
+  assert.match(l[0].peer, /^(127\.0\.0\.1|::1)$/);
+  assert.equal(l[1].ip, l[1].peer, 'no header: falls back to the socket address');
 });

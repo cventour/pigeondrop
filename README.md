@@ -430,6 +430,8 @@ All optional, all environment variables, identical on every platform.
 | `REPO_SUBTITLE` | `Drop files in. Take files out.` | Line under the heading |
 | `SETTINGS_FILE` | `$STATE_DIRECTORY/settings.json` under systemd, else `settings.json` beside `server.js` (in the working directory when run through npx or a global install) | Where changes made on the Settings page are kept. Mode 600; not in the managed directory. It must be somewhere the service can write. |
 | `ACTIVITY_LOG` | on | `off` stops the [activity log](#activity-log) |
+| `ACTIVITY_LOG_MAX_BYTES` | `10485760` (10 MB) | Size at which the activity log is rotated |
+| `TRUST_PROXY` | `off` | `on` logs the first `X-Forwarded-For` address as the client. Only turn it on behind a proxy you control. |
 
 Branding is configuration rather than code, so one copy serves any deployment.
 
@@ -480,13 +482,15 @@ means, are not.
 ## Activity log
 
 Pigeondrop appends one line to `activity.log` for each upload, download, delete,
-rename, new folder and settings change, and for each upload the scanner blocked
-or could not scan. Each line has the time, the client IP, the browser's user
+rename, new folder and settings change, for each upload the scanner blocked
+or could not scan, and for each request that was refused (a name already taken,
+a bad path). A download is logged when it ends, as completed or aborted with
+the bytes sent. An upload that replaced a file says so. Each line has the time, the client IP, the browser's user
 agent and the path inside the served folder. Open it from the Activity button,
 filter it, and export it as CSV.
 
 The file lives next to `settings.json`: `/var/lib/pigeondrop/activity.log`
-under systemd. When it passes 10 MB it is renamed to `activity.log.1`,
+under systemd. When it passes 10 MB (`ACTIVITY_LOG_MAX_BYTES`) it is renamed to `activity.log.1`,
 replacing any older one, and a new file starts. Settings changes are logged as
 before and after; a field that holds a secret is logged as changed, never with
 its value.
@@ -496,7 +500,10 @@ disappears and `/api/activity` returns 404.
 
 It is a record, not proof of identity. The address is the one the connection
 came from, so behind a proxy it is the proxy's, and addresses can be shared or
-spoofed. The log holds client IPs and file names, so treat it as personal data.
+spoofed. With `TRUST_PROXY=on` the address is the first one in `X-Forwarded-For`
+and the connection's own address is kept as `peer`. Turn that on only behind a
+proxy you control: otherwise any client can write whatever address it likes
+into the log. The log holds client IPs and file names, so treat it as personal data.
 
 ## There is no authentication
 

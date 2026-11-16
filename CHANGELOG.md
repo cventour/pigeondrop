@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- New: **Activity log.** Pigeondrop now keeps a record of uploads, downloads, deletes, renames and settings changes, with the time, the address and the browser they came from. Open it from the Activity button.
-- New: **Blocked uploads are recorded.** Files the scanner stopped show in the log with the reason, and the log can be exported as CSV. Set `ACTIVITY_LOG=off` to turn it off.
+- New: **Activity log.** Pigeondrop now keeps a record of uploads, downloads, deletes, renames and settings changes, with the time, the address and the browser they came from. Open it from the Activity button, filter it, or export it as CSV.
+- New: **Blocked and refused attempts are recorded.** Uploads the scanner stopped, and requests that were turned away, show in the log with the reason.
+- New: **Downloads say whether they finished.** A download that was cut off is marked as such, and an upload that replaced a file is marked as replaced.
 
 ## v1.7.0 — 4 November 2026
 
