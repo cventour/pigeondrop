@@ -431,7 +431,7 @@ All optional, all environment variables, identical on every platform.
 | `SETTINGS_FILE` | `$STATE_DIRECTORY/settings.json` under systemd, else `settings.json` beside `server.js` (in the working directory when run through npx or a global install) | Where changes made on the Settings page are kept. Mode 600; not in the managed directory. It must be somewhere the service can write. |
 | `ACTIVITY_LOG` | on | `off` stops the [activity log](#activity-log) |
 | `ACTIVITY_LOG_MAX_BYTES` | `10485760` (10 MB) | Size at which the activity log is rotated |
-| `TRUST_PROXY` | `off` | `on` logs the first `X-Forwarded-For` address as the client. Only turn it on behind a proxy you control. |
+| `TRUST_PROXY` | `off` | `on` logs the last `X-Forwarded-For` address, the one your proxy added, as the client. It trusts a single proxy that you control; turn it on only behind one. |
 
 Branding is configuration rather than code, so one copy serves any deployment.
 
@@ -500,10 +500,14 @@ disappears and `/api/activity` returns 404.
 
 It is a record, not proof of identity. The address is the one the connection
 came from, so behind a proxy it is the proxy's, and addresses can be shared or
-spoofed. With `TRUST_PROXY=on` the address is the first one in `X-Forwarded-For`
-and the connection's own address is kept as `peer`. Turn that on only behind a
-proxy you control: otherwise any client can write whatever address it likes
-into the log. The log holds client IPs and file names, so treat it as personal data.
+spoofed. With `TRUST_PROXY=on` the address is the last one in `X-Forwarded-For`, the one
+a single proxy that you control added, and the connection's own address is kept
+as `peer`. Earlier entries are written by the client and are ignored. If the
+header is missing or not an address, the connection's address is used and the
+line is marked `fwd_invalid`. Turn it on only behind such a proxy: otherwise any
+client can write whatever address it likes into the log.
+
+The log holds client IPs and file names, so treat it as personal data.
 
 ## There is no authentication
 

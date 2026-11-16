@@ -17,7 +17,7 @@ import net from 'node:net';
 import tls from 'node:tls';
 import zlib from 'node:zlib';
 import { once } from 'node:events';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { settingsDiff } from './settings-diff.js';
 
@@ -178,6 +178,7 @@ const ACTIVITY_FILE = path.join(path.dirname(SETTINGS_FILE), 'activity.log');
 const ACTIVITY_MAX = Number(process.env.ACTIVITY_LOG_MAX_BYTES) || 10 * 1024 * 1024;
 
 const TRUST_PROXY = String(process.env.TRUST_PROXY || '').toLowerCase() === 'on';
+// Only for tests: a small chunk makes lines cross chunk boundaries.
 const CHUNK = Number(process.env.ACTIVITY_READ_CHUNK) || 64 * 1024;
 
 // Where an event happened, relative to what is served: never a host path.
@@ -189,10 +190,16 @@ function logActivity(req, action, fields = {}) {
   try {
     const peer = (req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
     const ua = String(req.headers['user-agent'] || '').slice(0, 300);
-    // Only with TRUST_PROXY on, and then only for a proxy that sets the header:
-    // otherwise any client could write whatever address it liked into the log.
-    const fwd = TRUST_PROXY ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim().slice(0, 64) : '';
-    const who = TRUST_PROXY ? { ip: fwd || peer, peer } : { ip: peer };
+    // Only with TRUST_PROXY on. The right-most X-Forwarded-For entry is the
+    // one the trusted proxy appended, the address it saw; everything to its
+    // left was supplied by the client and can say anything. This trusts a
+    // single proxy. A missing or malformed entry falls back to the socket
+    // address and is flagged, rather than logging text the client chose.
+    let who = { ip: peer };
+    if (TRUST_PROXY) {
+      const last = String(req.headers['x-forwarded-for'] || '').split(',').pop().trim();
+      who = net.isIP(last) ? { ip: last, peer } : { ip: peer, peer, fwd_invalid: true };
+    }
     const line = JSON.stringify({ ts: new Date().toISOString(), ...who, ua, action, ...fields }) + '\n';
     try {
       if (fs.statSync(ACTIVITY_FILE).size >= ACTIVITY_MAX) fs.renameSync(ACTIVITY_FILE, ACTIVITY_FILE + '.1');
@@ -593,11 +600,13 @@ async function download(req, res, rel) {
     'content-length': st.size,
     'content-disposition': `attachment; filename="${path.basename(full).replace(/"/g, '')}"`,
   });
-  const rs = fs.createReadStream(full);
-  rs.on('data', (c) => { sent += c.length; });
+  // Counted as it is handed to the response, the same point the zip counts at,
+  // so a refused or slow client shows what was actually sent rather than what
+  // was read from disk ahead of it.
+  const count = new Transform({ transform(c, _e, cb) { sent += c.length; cb(null, c); } });
   // A client that goes away ends the pipeline with an error; headers are
   // already sent, so there is nothing to answer.
-  await pipeline(rs, res).catch(() => {});
+  await pipeline(fs.createReadStream(full), count, res).catch(() => {});
 }
 
 // --- zip -------------------------------------------------------------------
@@ -924,7 +933,11 @@ const server = http.createServer(async (req, res) => {
       const clean = safeName(name);
       if (!base) return refuse(req, res, 'mkdir', 400, 'bad path', { path: asked(dir) });
       if (!clean) return refuse(req, res, 'mkdir', 400, 'a folder name cannot contain / or \\', { path: relPath(base), to: asked(name) }, 'bad name');
-      await fsp.mkdir(path.join(base, clean), { recursive: false });
+      try { await fsp.mkdir(path.join(base, clean), { recursive: false }); }
+      catch (err) {
+        if (err.code === 'EEXIST') return refuse(req, res, 'mkdir', 409, 'that name is taken', { path: relPath(path.join(base, clean)) }, 'name taken');
+        throw err;
+      }
       logActivity(req, 'mkdir', { path: relPath(path.join(base, clean)) });
       return json(res, 200, { ok: true });
     }

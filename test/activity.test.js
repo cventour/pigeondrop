@@ -397,13 +397,112 @@ test('TRUST_PROXY off ignores X-Forwarded-For entirely', async () => {
   for (const e of s.lines()) { assert.match(e.ip, /^(127\.0\.0\.1|::1)$/); assert.equal('peer' in e, false); }
 });
 
-test('TRUST_PROXY on logs the left-most X-Forwarded-For address and the peer', async () => {
+test('TRUST_PROXY on logs the right-most X-Forwarded-For address and the peer', async () => {
   const s = await start({ TRUST_PROXY: 'on' });
-  await s.call('/api/mkdir', { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9, 10.1.1.1' },
-    body: JSON.stringify({ dir: '/', name: 'b' }) });
-  await s.jpost('/api/mkdir', { dir: '/', name: 'c' });
+  const mk = (name, xff) => s.call('/api/mkdir', { method: 'POST', headers: xff ? { 'x-forwarded-for': xff } : {},
+    body: JSON.stringify({ dir: '/', name }) });
+  await mk('a', '1.2.3.4, 10.0.0.9');          // the left entry is the client's claim
+  await mk('b', '  2001:db8::1 ');
+  await mk('c');
+  await mk('d', '10.0.0.9, not-an-ip');
+  await mk('e', '<script>');
   const l = s.lines();
-  assert.equal(l[0].ip, '203.0.113.9');
+  assert.equal(l[0].ip, '10.0.0.9');
   assert.match(l[0].peer, /^(127\.0\.0\.1|::1)$/);
-  assert.equal(l[1].ip, l[1].peer, 'no header: falls back to the socket address');
+  assert.equal('fwd_invalid' in l[0], false);
+  assert.equal(l[1].ip, '2001:db8::1');
+  for (const e of l.slice(2)) {
+    assert.equal(e.ip, e.peer, 'missing or invalid: falls back to the socket address');
+    assert.equal(e.fwd_invalid, true);
+  }
+});
+
+test('mkdir on an existing name is a 409, logged as a rejected mkdir', async () => {
+  const s = await start();
+  assert.equal((await s.jpost('/api/mkdir', { dir: '/', name: 'dup' })).status, 200);
+  const r = await s.jpost('/api/mkdir', { dir: '/', name: 'dup' });
+  assert.equal(r.status, 409);
+  assert.deepEqual(await r.json(), { error: 'that name is taken' });
+  const l = s.lines();
+  assert.deepEqual(l.map((e) => [e.action, e.result, e.reason]), [['mkdir', undefined, undefined], ['mkdir', 'rejected', 'name taken']]);
+  assert.equal(l[1].path, '/dup');
+});
+
+// --- the activity dialog's paging, without a browser ------------------------
+const pagerCtx = { AbortController };
+vm.runInNewContext(fs.readFileSync(path.join(import.meta.dirname, '..', 'public', 'pager.js'), 'utf8')
+  + ';this.makePager = makePager;', pagerCtx);
+
+// A fake server whose replies the test releases by hand, in any order.
+function fakePages() {
+  const calls = [];
+  const fetchPage = (type, before, signal) => new Promise((resolve, reject) => {
+    const c = { type, before, signal, resolve, reject };
+    signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    calls.push(c);
+  });
+  return { calls, fetchPage };
+}
+const tick = () => new Promise((r) => setImmediate(r));
+
+test('pager: a slow reply for an old filter cannot land after the filter changed', async () => {
+  const f = fakePages(), p = pagerCtx.makePager(f.fetchPage);
+  const first = p.start('uploads');
+  const second = p.start('blocked');
+  assert.equal(f.calls[0].signal.aborted, true, 'the old request is aborted');
+  f.calls[0].resolve({ items: [{ a: 'stale' }], next: 'STALE' });   // arrives anyway
+  f.calls[1].resolve({ items: [{ a: 'fresh' }], next: 'FRESH' });
+  assert.equal(await first, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(await second)), { items: [{ a: 'fresh' }] });
+  assert.equal(p.next, 'FRESH');
+  assert.equal(p.type, 'blocked');
+});
+
+test('pager: more() does nothing without a cursor or while a load is out', async () => {
+  const f = fakePages(), p = pagerCtx.makePager(f.fetchPage);
+  assert.equal(await p.more(), null);
+  assert.equal(f.calls.length, 0, 'no request without a cursor');
+  const s = p.start('all');
+  f.calls[0].resolve({ items: [1], next: 'C1' });
+  await s;
+  const m1 = p.more(), m2 = p.more();
+  assert.equal(f.calls.length, 2, 'a second click while loading is ignored');
+  assert.equal(f.calls[1].before, 'C1');
+  f.calls[1].resolve({ items: [2], next: null });
+  assert.equal((await m1).items[0], 2);
+  assert.equal(await m2, null);
+  assert.equal(p.next, null);
+  assert.equal(await p.more(), null);
+  assert.equal(f.calls.length, 2, 'no refetch of page 1');
+});
+
+test('pager: closing or changing filter abandons an export; it exports the filter it started with', async () => {
+  const f = fakePages(), p = pagerCtx.makePager(f.fetchPage);
+  p.type = 'downloads';
+  const exp = p.all();
+  await tick();
+  assert.equal(f.calls[0].type, 'downloads');
+  f.calls[0].resolve({ items: [1], next: 'N' });
+  await tick(); await tick();
+  assert.equal(f.calls[1].type, 'downloads', 'later pages stay on the starting filter');
+  p.start('uploads');                                  // the person clicks another chip
+  assert.equal(f.calls[1].signal.aborted, true);
+  assert.equal(await exp, null);
+
+  const exp2 = p.all();
+  await tick();
+  f.calls[f.calls.length - 1].resolve({ items: [7], next: null });
+  const r = await exp2;                                // an export that completes is for its own filter
+  assert.deepEqual(JSON.parse(JSON.stringify(r)), { items: [7], type: 'uploads' });
+
+  const exp3 = p.all();
+  p.cancel();                                          // dialog closed
+  assert.equal(await exp3, null);
+});
+
+test('pager: a real error from the current load still surfaces', async () => {
+  const f = fakePages(), p = pagerCtx.makePager(f.fetchPage);
+  const s = p.start('all');
+  f.calls[0].reject(new Error('boom'));
+  await assert.rejects(s, /boom/);
 });

@@ -390,6 +390,7 @@ footer a{color:var(--steel-dim)}
 <form id="zipform" method="post" hidden></form>
 
 <script src="csv.js"></script>
+<script src="pager.js"></script>
 <script>
 // Every request is relative, so this page works from whatever URL it is served at.
 const api = (p) => new URL(p, location.href.endsWith('/') ? location.href : location.href + '/').toString();
@@ -785,7 +786,6 @@ const ACTION_LABEL = { upload:'upload', upload_blocked:'upload blocked', upload_
   download:'download', download_zip:'download zip', delete:'delete', rename:'rename',
   mkdir:'new folder', settings:'settings' };
 const activityDlg = $('activity');
-let logType = 'all', logNext = null;
 
 // The one-line description of where an event happened, for the table and CSV.
 const logPath = (e) => e.paths ? e.paths.join(', ') : (e.to ? `${e.path} -> ${e.to}` : (e.path || ''));
@@ -816,26 +816,30 @@ function logRow(e) {
   return tr;
 }
 
-async function fetchActivity(type, before) {
+async function fetchActivity(type, before, signal) {
   const q = new URLSearchParams({ type, limit: '200' });
   if (before) q.set('before', before);
-  const r = await fetch(api('api/activity?' + q));
+  const r = await fetch(api('api/activity?' + q), { signal });
   const j = await asJson(r);
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
 
+// The pager drops replies that arrive after the filter changed or the dialog
+// closed (it resolves null for those), so nothing here needs to check.
+const pager = makePager(fetchActivity);
+
 async function loadLog(more) {
   $('log-err').textContent = '';
   try {
-    const j = await fetchActivity(logType, more ? logNext : null);
+    const r = await (more ? pager.more() : pager.start(pager.type));
+    if (!r) return;
     if (!more) $('log-rows').replaceChildren();
-    for (const e of j.items) $('log-rows').appendChild(logRow(e));
-    logNext = j.next;
+    for (const e of r.items) $('log-rows').appendChild(logRow(e));
     const any = $('log-rows').children.length > 0;
     $('log-wrap').hidden = !any;
     $('log-empty').hidden = any;
-    $('log-more').hidden = !logNext;
+    $('log-more').hidden = !pager.next;
   } catch (e) { $('log-err').textContent = e.message; }
 }
 
@@ -844,36 +848,44 @@ function drawChips() {
   for (const [k, label] of LOG_FILTERS) {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = label;
-    b.setAttribute('aria-pressed', String(k === logType));
-    b.onclick = () => { logType = k; drawChips(); loadLog(false); };
+    b.setAttribute('aria-pressed', String(k === pager.type));
+    b.onclick = () => {
+      pager.type = k; drawChips();
+      $('log-more').hidden = true;
+      loadLog(false);
+    };
     box.appendChild(b);
   }
 }
 
-$('btn-activity').onclick = () => { logType = 'all'; drawChips(); activityDlg.showModal(); loadLog(false); };
+$('btn-activity').onclick = () => {
+  pager.type = 'all'; drawChips(); $('log-more').hidden = true;
+  activityDlg.showModal(); loadLog(false);
+};
 $('log-more').onclick = () => loadLog(true);
 $('log-close').onclick = () => activityDlg.close();
+// Escape and the close button both end up here.
+activityDlg.addEventListener('close', () => { pager.cancel(); $('log-csv').disabled = false; });
 
-// Every page of the current filter, not just what is on screen.
+// Every page of the filter that was current when the button was pressed. A
+// filter change or closing the dialog abandons the export instead of saving
+// a file for a filter the person has moved on from.
 $('log-csv').onclick = async () => {
   const b = $('log-csv'); b.disabled = true; $('log-err').textContent = '';
   try {
+    const r = await pager.all();
+    if (!r) return;
     const lines = [csvRow(['time', 'action', 'path', 'detail', 'size', 'ip', 'user_agent'])];
-    let before = null;
-    do {
-      const j = await fetchActivity(logType, before);
-      for (const e of j.items) {
-        lines.push(csvRow([e.ts, e.action, logPath(e), logDetail(e), e.size ?? '', e.ip, e.ua]));
-      }
-      before = j.next;
-    } while (before);
+    for (const e of r.items) {
+      lines.push(csvRow([e.ts, e.action, logPath(e), logDetail(e), e.size ?? '', e.ip, e.ua]));
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }));
-    a.download = `activity-${logType}.csv`;
+    a.download = `activity-${r.type}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } catch (e) { $('log-err').textContent = e.message; }
-  b.disabled = false;
+  finally { b.disabled = false; }   // also when an abandoned export returns early
 };
 
 // --- settings --------------------------------------------------------------
