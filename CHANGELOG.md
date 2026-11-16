@@ -1,6 +1,6 @@
 # What's new
 
-## Unreleased
+## v1.8.0 — 16 November 2026
 
 - New: **Activity log.** Pigeondrop now keeps a record of uploads, downloads, deletes, renames and settings changes, with the time, the address and the browser they came from. Open it from the Activity button, filter it, or export it as CSV.
 - New: **Blocked and refused attempts are recorded.** Uploads the scanner stopped, and requests that were turned away, show in the log with the reason.
