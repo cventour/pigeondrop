@@ -1,5 +1,10 @@
 # What's new
 
+## Unreleased
+
+- New: **Activity log.** Pigeondrop now keeps a record of uploads, downloads, deletes, renames and settings changes, with the time, the address and the browser they came from. Open it from the Activity button.
+- New: **Blocked uploads are recorded.** Files the scanner stopped show in the log with the reason, and the log can be exported as CSV. Set `ACTIVITY_LOG=off` to turn it off.
+
 ## v1.7.0 — 4 November 2026
 
 - Changed: **Pigeonhole is now called Pigeondrop.** The page, the installers and the instructions use the new name. Existing installs keep working, and the installers keep updating them where they are.

@@ -5,10 +5,10 @@
   "type": "module",
   "main": "server.js",
   "bin": { "pigeondrop": "./server.js" },
-  "scripts": { "start": "node server.js" },
+  "scripts": { "start": "node server.js", "test": "node --test" },
   "engines": { "node": ">=20" },
   "license": "MIT",
   "keywords": ["file-manager", "upload", "self-hosted", "zero-dependency", "http"],
   "repository": { "type": "git", "url": "git+https://github.com/cventour/pigeondrop.git" },
-  "files": ["server.js", "public", "icon.svg", "README.md", "LICENSE", "CHANGELOG.md"]
+  "files": ["server.js", "settings-diff.js", "public", "icon.svg", "README.md", "LICENSE", "CHANGELOG.md"]
 }

@@ -429,6 +429,7 @@ All optional, all environment variables, identical on every platform.
 | `REPO_TITLE` | `Pigeondrop` | Page title and heading |
 | `REPO_SUBTITLE` | `Drop files in. Take files out.` | Line under the heading |
 | `SETTINGS_FILE` | `$STATE_DIRECTORY/settings.json` under systemd, else `settings.json` beside `server.js` (in the working directory when run through npx or a global install) | Where changes made on the Settings page are kept. Mode 600; not in the managed directory. It must be somewhere the service can write. |
+| `ACTIVITY_LOG` | on | `off` stops the [activity log](#activity-log) |
 
 Branding is configuration rather than code, so one copy serves any deployment.
 
@@ -475,6 +476,27 @@ speak TLS (or the other way round).
 
 Only uploads are scanned. Files already in the folder, or put there by other
 means, are not.
+
+## Activity log
+
+Pigeondrop appends one line to `activity.log` for each upload, download, delete,
+rename, new folder and settings change, and for each upload the scanner blocked
+or could not scan. Each line has the time, the client IP, the browser's user
+agent and the path inside the served folder. Open it from the Activity button,
+filter it, and export it as CSV.
+
+The file lives next to `settings.json`: `/var/lib/pigeondrop/activity.log`
+under systemd. When it passes 10 MB it is renamed to `activity.log.1`,
+replacing any older one, and a new file starts. Settings changes are logged as
+before and after; a field that holds a secret is logged as changed, never with
+its value.
+
+Set `ACTIVITY_LOG=off` to turn it off: nothing is written, the Activity button
+disappears and `/api/activity` returns 404.
+
+It is a record, not proof of identity. The address is the one the connection
+came from, so behind a proxy it is the proxy's, and addresses can be shared or
+spoofed. The log holds client IPs and file names, so treat it as personal data.
 
 ## There is no authentication
 

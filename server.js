@@ -19,6 +19,7 @@ import zlib from 'node:zlib';
 import { once } from 'node:events';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { settingsDiff } from './settings-diff.js';
 
 // Resolved, because safe() compares against this string: a relative
 // REPO_ROOT would never match an absolute resolved path, and every
@@ -161,6 +162,91 @@ async function saveSettings(next) {
     throw err;
   }
   settings = next;
+}
+
+// --- activity log ----------------------------------------------------------
+// An append-only record of what happened, when, and from where: one JSON line
+// per event in activity.log beside settings.json. It is a record, not
+// authentication: the address is whatever the socket says, which behind a
+// proxy is the proxy.
+//
+// Rotation is a single step: past the size limit, activity.log becomes
+// activity.log.1 (replacing any older one) and a new file starts. Writes are
+// synchronous: a line is tiny, and it keeps order and rotation simple.
+const ACTIVITY_ON = String(process.env.ACTIVITY_LOG || '').toLowerCase() !== 'off';
+const ACTIVITY_FILE = path.join(path.dirname(SETTINGS_FILE), 'activity.log');
+const ACTIVITY_MAX = Number(process.env.ACTIVITY_LOG_MAX_BYTES) || 10 * 1024 * 1024;
+
+// Where an event happened, relative to what is served: never a host path.
+const relPath = (full) => '/' + path.relative(ROOT, full).split(path.sep).join('/');
+
+let activityWarned = false;
+function logActivity(req, action, fields = {}) {
+  if (!ACTIVITY_ON) return;
+  try {
+    const ip = (req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+    const ua = String(req.headers['user-agent'] || '').slice(0, 300);
+    const line = JSON.stringify({ ts: new Date().toISOString(), ip, ua, action, ...fields }) + '\n';
+    try {
+      if (fs.statSync(ACTIVITY_FILE).size >= ACTIVITY_MAX) fs.renameSync(ACTIVITY_FILE, ACTIVITY_FILE + '.1');
+    } catch (err) { if (err.code !== 'ENOENT') throw err; }
+    fs.mkdirSync(path.dirname(ACTIVITY_FILE), { recursive: true });
+    fs.appendFileSync(ACTIVITY_FILE, line, { mode: 0o600 });
+  } catch (err) {
+    // The log must never take a request down with it.
+    if (!activityWarned) {
+      activityWarned = true;
+      console.error(`activity log: cannot write ${ACTIVITY_FILE} (${err.code || err.message}); further failures are not reported`);
+    }
+  }
+}
+
+const ACTIVITY_TYPES = {
+  all: null,
+  uploads: ['upload'],
+  downloads: ['download', 'download_zip'],
+  changes: ['delete', 'rename', 'mkdir'],
+  blocked: ['upload_blocked', 'upload_scan_error'],
+  settings: ['settings'],
+};
+
+// Newest first, paged. The cursor is "<file>:<offset>:<inode>": `file` is 0
+// for activity.log and 1 for activity.log.1, `offset` is the byte where the
+// last returned line starts, and the next page is everything before it. The
+// inode lets a cursor survive a rotation between pages: the file it named
+// is found again, as .1, instead of the offset being applied to a new file.
+// Lines are only ever appended, so an offset never moves within a file.
+function readActivity(types, limit, before) {
+  const files = [ACTIVITY_FILE, ACTIVITY_FILE + '.1'].map((f) => {
+    try { return { buf: fs.readFileSync(f), ino: String(fs.statSync(f).ino) }; } catch { return null; }
+  });
+  let startFile = 0, startOff = Infinity;
+  if (before) {
+    const [f, o, ino] = String(before).split(':');
+    const hit = files.findIndex((x) => x && x.ino === ino);
+    if (!/^[01]$/.test(f) || !/^\d+$/.test(o) || hit === -1) return { items: [], next: null };
+    startFile = hit; startOff = Number(o);
+  }
+  const items = [];
+  for (let fi = startFile; fi < 2; fi++) {
+    const x = files[fi];
+    if (!x) continue;
+    let end = fi === startFile ? Math.min(startOff, x.buf.length) : x.buf.length;
+    while (end > 0) {
+      const start = x.buf.lastIndexOf(10, end - 2) + 1;          // the line is [start, end)
+      let e;
+      try { e = JSON.parse(x.buf.subarray(start, end).toString('utf8')); } catch { e = null; }
+      end = start;
+      if (!e || (types && !types.includes(e.action))) continue;
+      items.push({ e, cursor: `${fi}:${start}:${x.ino}` });
+      // One past the page: proof that there is more, so "next" is never a
+      // cursor to an empty page.
+      if (items.length > limit) {
+        return { items: items.slice(0, limit).map((i) => i.e), next: items[limit - 1].cursor };
+      }
+    }
+  }
+  return { items: items.map((i) => i.e), next: null };
 }
 
 // --- ICAP ------------------------------------------------------------------
@@ -421,10 +507,16 @@ async function upload(req, res, rel, mode) {
     if (cfg.enabled) {
       const r = await scanFile(tmp, name, cfg);
       if (r.verdict === 'blocked') {
+        const size = (await fsp.stat(tmp).catch(() => null))?.size;
         await fsp.rm(tmp, { force: true });
+        logActivity(req, 'upload_blocked', { path: relPath(full), size, reason: r.reason,
+          ...(r.threat ? { threat: r.threat } : {}) });
         return json(res, 422, { error: 'blocked', reason: r.reason, threat: r.threat, name });
       }
       if (r.verdict === 'error') {
+        const size = (await fsp.stat(tmp).catch(() => null))?.size;
+        logActivity(req, 'upload_scan_error', { path: relPath(full), size, reason: r.detail,
+          result: cfg.failClosed ? 'rejected' : 'accepted' });
         if (cfg.failClosed) {
           await fsp.rm(tmp, { force: true });
           return json(res, 502, { error: 'scan failed', detail: r.detail, name });
@@ -435,6 +527,9 @@ async function upload(req, res, rel, mode) {
 
     await fsp.rename(tmp, full);
     const st = await fsp.stat(full);
+    // A file let through after a scanner fault already has its
+    // upload_scan_error line; one line per event.
+    if (scan !== 'skipped') logActivity(req, 'upload', { path: relPath(full), size: st.size, result: scan });
     json(res, 200, { ok: true, name, size: st.size, scan, note });
   } catch (err) {
     await fsp.rm(tmp, { force: true });
@@ -442,12 +537,13 @@ async function upload(req, res, rel, mode) {
   }
 }
 
-async function download(res, rel) {
+async function download(req, res, rel) {
   const full = safe(rel);
   if (!full) return json(res, 400, { error: 'bad path' });
   let st;
   try { st = await fsp.stat(full); } catch { return json(res, 404, { error: 'not found' }); }
   if (st.isDirectory()) return json(res, 400, { error: 'is a directory' });
+  logActivity(req, 'download', { path: relPath(full), size: st.size });
   res.writeHead(200, {
     'content-type': 'application/octet-stream',
     'content-length': st.size,
@@ -509,12 +605,16 @@ async function collect(full, name, out) {
 
 async function zip(req, res, rels, filename) {
   const items = [];
+  const asked = [];
   for (const rel of rels) {
     const full = safe(rel);
     if (!full || full === ROOT) return json(res, 400, { error: 'bad path' });
+    asked.push(relPath(full));
     await collect(full, path.basename(full), items);
   }
   if (!items.length) return json(res, 404, { error: 'nothing to download' });
+  logActivity(req, 'download_zip', { paths: asked,
+    size: items.reduce((n, it) => n + (it.dir ? 0 : it.st.size), 0) });
 
   const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
   res.writeHead(200, {
@@ -675,7 +775,19 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && p === '/api/config') {
-      return json(res, 200, { title: TITLE, subtitle: SUBTITLE, root: path.basename(ROOT) });
+      return json(res, 200, { title: TITLE, subtitle: SUBTITLE, root: path.basename(ROOT),
+                              activityLog: ACTIVITY_ON });
+    }
+
+    if (req.method === 'GET' && p === '/api/activity') {
+      if (!ACTIVITY_ON) return json(res, 404, { error: 'not found' });
+      const q = url.searchParams;
+      const type = q.get('type') || 'all';
+      if (!(type in ACTIVITY_TYPES)) return json(res, 400, { error: 'unknown type' });
+      const n = Number(q.get('limit'));
+      const limit = Number.isInteger(n) && n > 0 ? Math.min(n, 500) : 100;
+      const { items, next } = readActivity(ACTIVITY_TYPES[type], limit, q.get('before'));
+      return json(res, 200, { items, next });
     }
 
     if (req.method === 'GET' && p === '/api/settings') {
@@ -685,7 +797,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PUT' && p === '/api/settings') {
       const body = await readJson(req);
       const next = { ...settings, icap: cleanIcap({ ...settings.icap, ...body.icap }) };
+      const before = settings;
       await saveSettings(next);
+      const changes = settingsDiff(before, next);
+      if (changes.length) logActivity(req, 'settings', { changes });
       return json(res, 200, settings);
     }
 
@@ -715,7 +830,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && p.startsWith('/api/download/')) {
-      return await download(res, p.slice('/api/download'.length));
+      return await download(req, res, p.slice('/api/download'.length));
     }
 
     // A form POST rather than fetch, so the browser runs the download itself:
@@ -735,7 +850,9 @@ const server = http.createServer(async (req, res) => {
       const { target } = await readJson(req);
       const full = safe(target);
       if (!full || full === ROOT) return json(res, 400, { error: 'bad path' });
+      const existed = fs.existsSync(full);
       await fsp.rm(full, { recursive: true, force: true });
+      if (existed) logActivity(req, 'delete', { path: relPath(full) });
       return json(res, 200, { ok: true });
     }
 
@@ -748,6 +865,7 @@ const server = http.createServer(async (req, res) => {
       const dest = path.join(path.dirname(full), clean);
       if (fs.existsSync(dest)) return json(res, 409, { error: 'that name is taken' });
       await fsp.rename(full, dest);
+      logActivity(req, 'rename', { path: relPath(full), to: relPath(dest) });
       return json(res, 200, { ok: true });
     }
 
@@ -758,6 +876,7 @@ const server = http.createServer(async (req, res) => {
       if (!base) return json(res, 400, { error: 'bad path' });
       if (!clean) return json(res, 400, { error: 'a folder name cannot contain / or \\' });
       await fsp.mkdir(path.join(base, clean), { recursive: false });
+      logActivity(req, 'mkdir', { path: relPath(path.join(base, clean)) });
       return json(res, 200, { ok: true });
     }
 

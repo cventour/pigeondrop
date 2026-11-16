@@ -230,6 +230,25 @@ dialog.wide{max-width:min(500px,calc(100vw - 32px))}
 .set-result.bad{color:var(--danger)}
 .set-result.bad::before{content:"\25CF  "}
 
+/* --- activity dialog --- */
+dialog.log{max-width:min(980px,calc(100vw - 32px))}
+.log-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.log-chips button{font-family:var(--mono);font-size:.74rem;padding:5px 10px;cursor:pointer;
+  background:var(--chassis);color:var(--steel-dim);border:1px solid var(--rule-hi)}
+.log-chips button[aria-pressed="true"]{border-color:var(--signal-dim);color:var(--signal)}
+.log-wrap{margin-top:14px;max-height:50vh;overflow:auto;border:1px solid var(--rule)}
+.log-wrap table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.76rem}
+.log-wrap th{position:sticky;top:0;background:var(--panel-lo);text-align:left;
+  color:var(--steel-faint);font-weight:400;letter-spacing:.05em;text-transform:uppercase}
+.log-wrap th,.log-wrap td{padding:6px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+.log-wrap td{color:var(--steel-dim)}
+.log-wrap td.when,.log-wrap td.sz{white-space:nowrap;font-variant-numeric:tabular-nums}
+.log-wrap td.what{color:var(--ink);white-space:nowrap}
+.log-wrap td.path{overflow-wrap:anywhere;color:var(--ink)}
+.log-wrap td.path small{display:block;color:var(--steel-faint)}
+.log-wrap td.bad{color:var(--danger)}
+.log-empty{margin-top:14px;color:var(--steel-faint);font-size:.85rem}
+
 footer{border-top:1px solid var(--rule);margin-top:34px;padding:20px 0 40px;
   font-family:var(--mono);font-size:.76rem;color:var(--steel-faint);
   display:flex;flex-wrap:wrap;gap:8px 24px}
@@ -252,6 +271,7 @@ footer a{color:var(--steel-dim)}
   <div class="bar">
     <nav class="crumbs" id="crumbs" aria-label="Folder path"></nav>
     <button class="act" id="btn-dl" hidden></button>
+    <button class="act" id="btn-activity" hidden>Activity</button>
     <button class="act" id="btn-settings">Settings</button>
     <button class="act" id="btn-mkdir">New folder</button>
     <button class="act primary" id="btn-pick">Upload files</button>
@@ -282,6 +302,7 @@ footer a{color:var(--steel-dim)}
   <footer>
     <span id="rootname"></span>
     <span id="scanstate"></span>
+    <span id="logstate" hidden>activity logged</span>
     <span>no authentication — trusted networks only</span>
     <span><a href="https://github.com/cventour/pigeondrop">pigeondrop</a></span>
   </footer>
@@ -343,10 +364,32 @@ footer a{color:var(--steel-dim)}
   </form>
 </dialog>
 
+<dialog id="activity" class="log wide">
+  <div class="dlg-body">
+    <h2>Activity</h2>
+    <p>What happened here, and from which address. A record, not proof of who did it.</p>
+    <div class="log-chips" id="log-chips"></div>
+    <div class="log-wrap" id="log-wrap" hidden>
+      <table>
+        <thead><tr><th>Time</th><th>Action</th><th>Path</th><th>Size</th><th>IP</th><th>User agent</th></tr></thead>
+        <tbody id="log-rows"></tbody>
+      </table>
+    </div>
+    <p class="log-empty" id="log-empty" hidden>Nothing logged for this filter.</p>
+    <div class="dlg-err" id="log-err"></div>
+  </div>
+  <div class="dlg-foot">
+    <button type="button" id="log-more" hidden>Load more</button>
+    <button type="button" id="log-csv">Export CSV</button>
+    <button type="button" class="go" id="log-close">Close</button>
+  </div>
+</dialog>
+
 <!-- Zip downloads go out as a plain form POST, so the browser handles the
      download natively instead of the page buffering the archive. -->
 <form id="zipform" method="post" hidden></form>
 
+<script src="csv.js"></script>
 <script>
 // Every request is relative, so this page works from whatever URL it is served at.
 const api = (p) => new URL(p, location.href.endsWith('/') ? location.href : location.href + '/').toString();
@@ -733,6 +776,106 @@ $('btn-mkdir').onclick = async () => {
   catch (e) { say(e.message, true); }
 };
 
+// --- activity --------------------------------------------------------------
+// Everything logged comes from outside (file names, user agents), so every
+// cell is built with textContent and nothing here touches innerHTML.
+const LOG_FILTERS = [['all','All'],['uploads','Uploads'],['downloads','Downloads'],
+  ['changes','Deletes & renames'],['blocked','Blocked by scanner'],['settings','Settings']];
+const ACTION_LABEL = { upload:'upload', upload_blocked:'upload blocked', upload_scan_error:'scan error',
+  download:'download', download_zip:'download zip', delete:'delete', rename:'rename',
+  mkdir:'new folder', settings:'settings' };
+const activityDlg = $('activity');
+let logType = 'all', logNext = null;
+
+// The one-line description of where an event happened, for the table and CSV.
+const logPath = (e) => e.paths ? e.paths.join(', ') : (e.to ? `${e.path} -> ${e.to}` : (e.path || ''));
+const logDetail = (e) => e.changes
+  ? e.changes.map((c) => c.changed ? `${c.field} changed` : `${c.field}: ${c.from} -> ${c.to}`).join('; ')
+  : [e.result, e.reason, e.threat && `threat ${e.threat}`].filter(Boolean).join(': ');
+const shortUa = (ua) => ua.length > 40 ? ua.slice(0, 40) + '\u2026' : ua;
+
+function cell(tr, text, cls, title) {
+  const td = document.createElement('td');
+  td.textContent = text;
+  if (cls) td.className = cls;
+  if (title) td.title = title;
+  tr.appendChild(td);
+  return td;
+}
+
+function logRow(e) {
+  const tr = document.createElement('tr');
+  cell(tr, fmtDate(Date.parse(e.ts)), 'when', e.ts);
+  cell(tr, ACTION_LABEL[e.action] || e.action, 'what' + (/blocked|scan_error/.test(e.action) ? ' bad' : ''));
+  const td = cell(tr, logPath(e), 'path');
+  const d = logDetail(e);
+  if (d) { const sm = document.createElement('small'); sm.textContent = d; td.appendChild(sm); }
+  cell(tr, e.size === undefined || e.size === null ? '' : fmtSize(e.size), 'sz');
+  cell(tr, e.ip || '');
+  cell(tr, shortUa(e.ua || ''), '', e.ua || '');
+  return tr;
+}
+
+async function fetchActivity(type, before) {
+  const q = new URLSearchParams({ type, limit: '200' });
+  if (before) q.set('before', before);
+  const r = await fetch(api('api/activity?' + q));
+  const j = await asJson(r);
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+async function loadLog(more) {
+  $('log-err').textContent = '';
+  try {
+    const j = await fetchActivity(logType, more ? logNext : null);
+    if (!more) $('log-rows').replaceChildren();
+    for (const e of j.items) $('log-rows').appendChild(logRow(e));
+    logNext = j.next;
+    const any = $('log-rows').children.length > 0;
+    $('log-wrap').hidden = !any;
+    $('log-empty').hidden = any;
+    $('log-more').hidden = !logNext;
+  } catch (e) { $('log-err').textContent = e.message; }
+}
+
+function drawChips() {
+  const box = $('log-chips'); box.replaceChildren();
+  for (const [k, label] of LOG_FILTERS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label;
+    b.setAttribute('aria-pressed', String(k === logType));
+    b.onclick = () => { logType = k; drawChips(); loadLog(false); };
+    box.appendChild(b);
+  }
+}
+
+$('btn-activity').onclick = () => { logType = 'all'; drawChips(); activityDlg.showModal(); loadLog(false); };
+$('log-more').onclick = () => loadLog(true);
+$('log-close').onclick = () => activityDlg.close();
+
+// Every page of the current filter, not just what is on screen.
+$('log-csv').onclick = async () => {
+  const b = $('log-csv'); b.disabled = true; $('log-err').textContent = '';
+  try {
+    const lines = [csvRow(['time', 'action', 'path', 'detail', 'size', 'ip', 'user_agent'])];
+    let before = null;
+    do {
+      const j = await fetchActivity(logType, before);
+      for (const e of j.items) {
+        lines.push(csvRow([e.ts, e.action, logPath(e), logDetail(e), e.size ?? '', e.ip, e.ua]));
+      }
+      before = j.next;
+    } while (before);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }));
+    a.download = `activity-${logType}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) { $('log-err').textContent = e.message; }
+  b.disabled = false;
+};
+
 // --- settings --------------------------------------------------------------
 // The server owns the settings; this reads them when the dialog opens and
 // sends them back whole on Save. `scanOn` only decides whether an upload that
@@ -998,6 +1141,7 @@ fetch(api('api/config')).then(r => r.json()).then(c => {
   if (c.title) { document.title = c.title; $('title').textContent = c.title; }
   if (c.subtitle) $('subtitle').textContent = c.subtitle;
   if (c.root) $('rootname').textContent = c.root;
+  $('btn-activity').hidden = $('logstate').hidden = !c.activityLog;
 }).catch(() => {});
 
 refresh();
